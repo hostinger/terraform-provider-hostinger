@@ -1,25 +1,61 @@
 project_name: terraform-provider-hostinger
+
+before:
+  hooks:
+    - go mod tidy
+
 builds:
-  - main: ./main.go
+  - id: hostinger
+    main: .
+    binary: terraform-provider-hostinger
     goos:
+      - freebsd
+      - windows
       - linux
       - darwin
-      - windows
     goarch:
       - amd64
+      - '386'
+      - arm
       - arm64
-    ldflags:
-      - -s -w -X main.version={{.Version}}
+    ignore:
+      - goos: darwin
+        goarch: '386'
+      - goos: freebsd
+        goarch: arm
+    env:
+      - CGO_ENABLED=0
 
 archives:
-  - format: zip
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: default
+    name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: zip
+    builds:
+      - hostinger
+    files:
+      - README.md
+      - LICENSE
+    wrap_in_directory: true
 
 checksum:
-  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
+
+signs:
+  - artifacts: checksum
+    signature: "${artifact}.sig"
+    args:
+      - --batch
+      - --yes
+      - --armor
+      - --detach-sign
+      - --local-user
+      - "${GPG_FINGERPRINT}"
+    cmd: gpg
 
 release:
   github:
     owner: hostinger
     name: terraform-provider-hostinger
+  draft: false
+  prerelease: false
 

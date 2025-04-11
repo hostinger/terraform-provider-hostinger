@@ -22,7 +22,7 @@ type HostingerClient struct {
 // NewHostingerClient initializes a new API client with the given token
 func NewHostingerClient(token, version string) *HostingerClient {
     return &HostingerClient{
-        BaseURL:    "https://developers.hostinger.dev",
+        BaseURL:    "https://developers.hostinger.com",
         HTTPClient: &http.Client{},
         Token:      token,
         Version:    version,
