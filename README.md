@@ -114,8 +114,6 @@ output "available_templates" {
 
 ## Development
 
-This provider uses the legacy Terraform SDK (v2) for now, and may be upgraded to Terraform Plugin Framework in future versions.
-
 To build:
 
 ```bash
