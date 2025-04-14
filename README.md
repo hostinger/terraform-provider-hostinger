@@ -23,29 +23,21 @@ This provider integrates with Hostinger's Public API to manage VPS servers, post
 ## Requirements
 
 - Terraform ≥ 1.3.0
-- Hostinger API Token (bearer)
+- Hostinger API Token (bearer) - obtainable from your Hostinger account under the API section
+- A valid payment method added to your Hostinger account — either Google Pay (Credit Card) or PayPal
 
 ---
 
 ## Installation
 
-Until released to the Terraform Registry, install the provider locally:
-
-```bash
-mkdir -p ~/.terraform.d/plugins/local/hostinger/hostinger/0.1.0/darwin_arm64
-mv terraform-provider-hostinger ~/.terraform.d/plugins/local/hostinger/hostinger/0.1.0/darwin_arm64/terraform-provider-hostinger_v0.1.0
-```
-
----
-
-## Example Usage
+In your terraform config, define `hostinger/hostinger` in your required_providers and set your API key:
 
 ```hcl
 terraform {
   required_providers {
     hostinger = {
-      source  = "local/hostinger/hostinger"
-      version = "0.1.0"
+      source = "hostinger/hostinger"
+      version = "0.1.3"
     }
   }
 }
@@ -141,7 +133,7 @@ Our team actively monitors reports and strives to address them promptly to ensur
 
 ## License
 
-[MIT](LICENSE)
+[MPL-2.0](LICENSE)
 
 ---
 
