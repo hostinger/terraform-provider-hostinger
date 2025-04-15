@@ -126,7 +126,7 @@ terraform apply
 
 Pull requests and issues are welcome. We aim to build the most user-friendly Hostinger provider on the Terraform Registry.
 
-If you encounter any bugs or unexpected behavior, please [open an issue](https://github.com/your-org/terraform-provider-hostinger/issues).  
+If you encounter any bugs or unexpected behavior, please [open an issue](https://github.com/hostinger/terraform-provider-hostinger/issues).  
 Our team actively monitors reports and strives to address them promptly to ensure a stable and reliable experience for all users.
 
 ---
