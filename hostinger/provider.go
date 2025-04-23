@@ -28,6 +28,7 @@ func Provider() *schema.Provider {
             "hostinger_vps_templates":      dataSourceHostingerVPSTemplates(),
             "hostinger_vps_data_centers":   dataSourceHostingerVPSDataCenters(),
             "hostinger_vps_plans":          dataSourceHostingerVPSPlans(),
+            "hostinger_dns_record": resourceHostingerDNSRecord(),
         },
         ConfigureContextFunc: providerConfigure,
     }
