@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -59,7 +60,7 @@ func resourceHostingerDNSRecordCreate(d *schema.ResourceData, meta interface{}) 
 	value := d.Get("value").(string)
 	ttl := d.Get("ttl").(int)
 
-	url := fmt.Sprintf("https://developers.hostinger.com/api/dns/v1/zones/%s/records", zone)
+	url := fmt.Sprintf("%s/api/dns/v1/zones/%s/records", client.BaseURL, zone)
 
 	payload := map[string]interface{}{
 		"name":  name,
@@ -73,8 +74,8 @@ func resourceHostingerDNSRecordCreate(d *schema.ResourceData, meta interface{}) 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+client.Token)
-	req.Header.Set("Content-Type", "application/json")
+
+	client.addStandardHeaders(req)
 
 	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
@@ -102,10 +103,10 @@ func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) er
 	zone := d.Get("zone").(string)
 	id := d.Id()
 
-	url := fmt.Sprintf("https://developers.hostinger.com/api/dns/v1/zones/%s/records", zone)
+	url := fmt.Sprintf("%s/api/dns/v1/zones/%s/records", client.BaseURL, zone)
 
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Bearer "+client.Token)
+	client.addStandardHeaders(req)
 
 	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
@@ -132,6 +133,7 @@ func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) er
 			return nil
 		}
 	}
+
 	d.SetId("")
 	return nil
 }
@@ -142,10 +144,10 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 	zone := d.Get("zone").(string)
 	id := d.Id()
 
-	url := fmt.Sprintf("https://developers.hostinger.com/api/dns/v1/zones/%s/records/%s", zone, id)
+	url := fmt.Sprintf("%s/api/dns/v1/zones/%s/records/%s", client.BaseURL, zone, id)
 
 	req, _ := http.NewRequest("DELETE", url, nil)
-	req.Header.Set("Authorization", "Bearer "+client.Token)
+	client.addStandardHeaders(req)
 
 	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
