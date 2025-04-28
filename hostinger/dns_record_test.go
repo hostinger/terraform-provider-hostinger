@@ -24,11 +24,21 @@ func TestResourceHostingerDNSRecord_BasicCreate(t *testing.T) {
 	resource := resourceHostingerDNSRecord()
 	data := resource.TestResourceData()
 
-	data.Set("zone", "example.com")
-	data.Set("name", "test")
-	data.Set("type", "CNAME")
-	data.Set("value", "target.example.com")
-	data.Set("ttl", 14400)
+	if err := data.Set("zone", "example.com"); err != nil {
+		t.Fatalf("failed to set zone: %v", err)
+	}
+	if err := data.Set("name", "test"); err != nil {
+		t.Fatalf("failed to set name: %v", err)
+	}
+	if err := data.Set("type", "CNAME"); err != nil {
+		t.Fatalf("failed to set type: %v", err)
+	}
+	if err := data.Set("value", "target.example.com"); err != nil {
+		t.Fatalf("failed to set value: %v", err)
+	}
+	if err := data.Set("ttl", 14400); err != nil {
+		t.Fatalf("failed to set ttl: %v", err)
+	}
 
 	// Just check that Set works without panic and has the right values
 	if v := data.Get("zone"); v != "example.com" {

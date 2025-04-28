@@ -123,7 +123,9 @@ func dataSourceHostingerVPSDataCentersRead(ctx context.Context, d *schema.Resour
 		return diag.FromErr(err)
 	}
 
-	d.Set("data_centers", result)
+	if err := d.Set("data_centers", result); err != nil {
+		return diag.FromErr(fmt.Errorf("failed to set data_centers: %w", err))
+	}
 	d.SetId("data_centers")
 	return nil
 }
@@ -178,7 +180,9 @@ func dataSourceHostingerVPSPlansRead(ctx context.Context, d *schema.ResourceData
 		}
 	}
 
-	d.Set("plans", plans)
+	if err := d.Set("plans", plans); err != nil {
+		return diag.FromErr(fmt.Errorf("failed to set plans: %w", err))
+	}
 	d.SetId("plans")
 	return nil
 }

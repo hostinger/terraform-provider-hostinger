@@ -1,32 +1,32 @@
 package hostinger
 
 import (
-    "bytes"
-    "encoding/json"
-    "errors"
-    "fmt"
-    "io"
-    "net/http"
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
 )
 
 var ErrNotFound = errors.New("not found")
 
 // HostingerClient is a minimal API client for Hostinger's public API
 type HostingerClient struct {
-    BaseURL    string
-    HTTPClient *http.Client
-    Token      string
-    Version    string
+	BaseURL    string
+	HTTPClient *http.Client
+	Token      string
+	Version    string
 }
 
 // NewHostingerClient initializes a new API client with the given token
 func NewHostingerClient(token, version string) *HostingerClient {
-    return &HostingerClient{
-        BaseURL:    "https://developers.hostinger.com",
-        HTTPClient: &http.Client{},
-        Token:      token,
-        Version:    version,
-    }
+	return &HostingerClient{
+		BaseURL:    "https://developers.hostinger.com",
+		HTTPClient: &http.Client{},
+		Token:      token,
+		Version:    version,
+	}
 }
 
 type PaymentMethod struct {
@@ -35,9 +35,9 @@ type PaymentMethod struct {
 }
 
 func (client *HostingerClient) addStandardHeaders(req *http.Request) {
-    req.Header.Set("Authorization", "Bearer "+client.Token)
-    req.Header.Set("User-Agent", "terraform-provider-hostinger/0.1.0")
-    req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	req.Header.Set("User-Agent", "terraform-provider-hostinger/0.1.0")
+	req.Header.Set("Content-Type", "application/json")
 }
 
 func (c *HostingerClient) GetDefaultPaymentMethod() (int, error) {
@@ -57,12 +57,12 @@ func (c *HostingerClient) GetDefaultPaymentMethod() (int, error) {
 		return 0, fmt.Errorf("failed to list payment methods (HTTP %d): %s", resp.StatusCode, msg)
 	}
 
-    var methods []PaymentMethod
-    if err := json.NewDecoder(resp.Body).Decode(&methods); err != nil {
-        return 0, err
-    }
-    
-    for _, pm := range methods {
+	var methods []PaymentMethod
+	if err := json.NewDecoder(resp.Body).Decode(&methods); err != nil {
+		return 0, err
+	}
+
+	for _, pm := range methods {
 		if pm.IsDefault {
 			return pm.ID, nil
 		}
@@ -72,16 +72,16 @@ func (c *HostingerClient) GetDefaultPaymentMethod() (int, error) {
 }
 
 func (c *HostingerClient) GetSubscriptionIDByVMID(vmID int) (string, error) {
-    vm, err := c.GetVirtualMachine(vmID)
-    if err != nil {
-        return "", err
-    }
+	vm, err := c.GetVirtualMachine(vmID)
+	if err != nil {
+		return "", err
+	}
 
-    if vm.SubscriptionID == "" {
-        return "", fmt.Errorf("subscription_id is empty for VPS ID %d", vmID)
-    }
+	if vm.SubscriptionID == "" {
+		return "", fmt.Errorf("subscription_id is empty for VPS ID %d", vmID)
+	}
 
-    return vm.SubscriptionID, nil
+	return vm.SubscriptionID, nil
 }
 
 type Subscription struct {
@@ -93,252 +93,252 @@ type Subscription struct {
 }
 
 func (c *HostingerClient) CancelSubscription(subscriptionID string) error {
-    url := fmt.Sprintf("%s/api/billing/v1/subscriptions/%s", c.BaseURL, subscriptionID)
+	url := fmt.Sprintf("%s/api/billing/v1/subscriptions/%s", c.BaseURL, subscriptionID)
 
-    req, err := http.NewRequest("DELETE", url, nil)
-    if err != nil {
-        return fmt.Errorf("failed to create cancel subscription request: %w", err)
-    }
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create cancel subscription request: %w", err)
+	}
 
-    c.addStandardHeaders(req)
+	c.addStandardHeaders(req)
 
-    resp, err := c.HTTPClient.Do(req)
-    if err != nil {
-        return fmt.Errorf("API request failed: %w", err)
-    }
-    defer resp.Body.Close()
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("API request failed: %w", err)
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-        msg, _ := io.ReadAll(resp.Body)
-        return fmt.Errorf("failed to cancel subscription %s (HTTP %d): %s", subscriptionID, resp.StatusCode, string(msg))
-    }
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to cancel subscription %s (HTTP %d): %s", subscriptionID, resp.StatusCode, string(msg))
+	}
 
-    return nil
+	return nil
 }
 
 // orderRequest and orderResponse define the structure for placing an order
 type orderItem struct {
-    ItemID   string `json:"item_id"`
-    Quantity int    `json:"quantity"`
+	ItemID   string `json:"item_id"`
+	Quantity int    `json:"quantity"`
 }
 type orderRequest struct {
-    PaymentMethodID int         `json:"payment_method_id"`
-    Items           []orderItem `json:"items"`
+	PaymentMethodID int         `json:"payment_method_id"`
+	Items           []orderItem `json:"items"`
 }
 type orderResponse struct {
-    SubscriptionID string `json:"subscription_id"`
+	SubscriptionID string `json:"subscription_id"`
 }
 
 // OrderVPS places a new order for a VPS subscription and returns the subscription ID.
 func (c *HostingerClient) OrderVPS(plan string, paymentMethodID int) (string, error) {
-    url := c.BaseURL + "/api/billing/v1/orders"
+	url := c.BaseURL + "/api/billing/v1/orders"
 
-    // Prepare request body
-    reqBody := orderRequest{
-        PaymentMethodID: paymentMethodID,
-        Items: []orderItem{
-            {ItemID: plan, Quantity: 1},
-        },
-    }
-    bodyData, err := json.Marshal(reqBody)
-    if err != nil {
-        return "", err
-    }
+	// Prepare request body
+	reqBody := orderRequest{
+		PaymentMethodID: paymentMethodID,
+		Items: []orderItem{
+			{ItemID: plan, Quantity: 1},
+		},
+	}
+	bodyData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
 
-    // Create HTTP request
-    req, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyData))
-    if err != nil {
-        return "", err
-    }
-    c.addStandardHeaders(req)
+	// Create HTTP request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyData))
+	if err != nil {
+		return "", err
+	}
+	c.addStandardHeaders(req)
 
-    // Execute request
-    resp, err := c.HTTPClient.Do(req)
-    if err != nil {
-        return "", err
-    }
-    defer resp.Body.Close()
+	// Execute request
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusOK {
-        // Read error response for details
-        errMsg, _ := io.ReadAll(resp.Body)
-        return "", fmt.Errorf("failed to place order (HTTP %d): %s", resp.StatusCode, string(errMsg))
-    }
+	if resp.StatusCode != http.StatusOK {
+		// Read error response for details
+		errMsg, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("failed to place order (HTTP %d): %s", resp.StatusCode, string(errMsg))
+	}
 
-    // Parse successful order response
-    var orderRes orderResponse
-    if err := json.NewDecoder(resp.Body).Decode(&orderRes); err != nil {
-        return "", fmt.Errorf("invalid order response: %w", err)
-    }
-    return orderRes.SubscriptionID, nil
+	// Parse successful order response
+	var orderRes orderResponse
+	if err := json.NewDecoder(resp.Body).Decode(&orderRes); err != nil {
+		return "", fmt.Errorf("invalid order response: %w", err)
+	}
+	return orderRes.SubscriptionID, nil
 }
 
 // VirtualMachine and IPAddress represent the relevant fields of a VPS instance
 type VirtualMachine struct {
-    ID             int         `json:"id"`
-    SubscriptionID string      `json:"subscription_id"`
-    Hostname       string      `json:"hostname"`
-    State          string      `json:"state"`
-    IPv4           []IPAddress `json:"ipv4"`
-    IPv6           []IPAddress `json:"ipv6"`
+	ID             int         `json:"id"`
+	SubscriptionID string      `json:"subscription_id"`
+	Hostname       string      `json:"hostname"`
+	State          string      `json:"state"`
+	IPv4           []IPAddress `json:"ipv4"`
+	IPv6           []IPAddress `json:"ipv6"`
 }
 type IPAddress struct {
-    Address string `json:"address"`
+	Address string `json:"address"`
 }
 
 // GetVirtualMachines lists all VPS instances in the account.
 func (c *HostingerClient) GetVirtualMachines() ([]VirtualMachine, error) {
-    url := c.BaseURL + "/api/vps/v1/virtual-machines"
-    req, err := http.NewRequest("GET", url, nil)
-    if err != nil {
-        return nil, err
-    }
-    c.addStandardHeaders(req)
+	url := c.BaseURL + "/api/vps/v1/virtual-machines"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.addStandardHeaders(req)
 
-    resp, err := c.HTTPClient.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusOK {
-        return nil, fmt.Errorf("failed to list VPS instances (HTTP %d)", resp.StatusCode)
-    }
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to list VPS instances (HTTP %d)", resp.StatusCode)
+	}
 
-    var vms []VirtualMachine
-    if err := json.NewDecoder(resp.Body).Decode(&vms); err != nil {
-        return nil, fmt.Errorf("could not decode VPS list: %w", err)
-    }
-    return vms, nil
+	var vms []VirtualMachine
+	if err := json.NewDecoder(resp.Body).Decode(&vms); err != nil {
+		return nil, fmt.Errorf("could not decode VPS list: %w", err)
+	}
+	return vms, nil
 }
 
 // FindVirtualMachineBySubscription finds a VPS ID by its subscription ID.
 func (c *HostingerClient) FindVirtualMachineBySubscription(subscriptionID string) (int, error) {
-    vms, err := c.GetVirtualMachines()
-    if err != nil {
-        return 0, err
-    }
-    for _, vm := range vms {
-        if vm.SubscriptionID == subscriptionID {
-            return vm.ID, nil
-        }
-    }
-    return 0, ErrNotFound
+	vms, err := c.GetVirtualMachines()
+	if err != nil {
+		return 0, err
+	}
+	for _, vm := range vms {
+		if vm.SubscriptionID == subscriptionID {
+			return vm.ID, nil
+		}
+	}
+	return 0, ErrNotFound
 }
 
 // SetupRequest defines the payload to set up (activate) a new VPS.
 type SetupRequest struct {
-    DataCenterID int    `json:"data_center_id"`
-    TemplateID   int    `json:"template_id"`
-    Password     *string `json:"password,omitempty"`
-    Hostname     *string `json:"hostname,omitempty"`
+	DataCenterID int     `json:"data_center_id"`
+	TemplateID   int     `json:"template_id"`
+	Password     *string `json:"password,omitempty"`
+	Hostname     *string `json:"hostname,omitempty"`
 }
 
 // SetupVirtualMachine activates a newly purchased VPS (with 'initial' state) by installing the OS.
 func (c *HostingerClient) SetupVirtualMachine(vmID int, setup SetupRequest) (*VirtualMachine, error) {
-    url := fmt.Sprintf("%s/api/vps/v1/virtual-machines/%d/setup", c.BaseURL, vmID)
-    fmt.Printf("[DEBUG] Setup request body: %+v\n", setup)
-    body := map[string]interface{}{
-        "data_center_id": setup.DataCenterID,
-        "template_id":    setup.TemplateID,
-    }
-    
-    if setup.Hostname != nil && *setup.Hostname != "" {
-        body["hostname"] = *setup.Hostname
-    }    
-    
-    if setup.Password != nil && *setup.Password != "" {
-        body["password"] = *setup.Password
-    }
-    
-    bodyData, err := json.Marshal(body)
-    if err != nil {
-        return nil, err
-    }
+	url := fmt.Sprintf("%s/api/vps/v1/virtual-machines/%d/setup", c.BaseURL, vmID)
+	fmt.Printf("[DEBUG] Setup request body: %+v\n", setup)
+	body := map[string]interface{}{
+		"data_center_id": setup.DataCenterID,
+		"template_id":    setup.TemplateID,
+	}
 
-    req, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyData))
-    if err != nil {
-        return nil, err
-    }
-    c.addStandardHeaders(req)
+	if setup.Hostname != nil && *setup.Hostname != "" {
+		body["hostname"] = *setup.Hostname
+	}
 
-    resp, err := c.HTTPClient.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
+	if setup.Password != nil && *setup.Password != "" {
+		body["password"] = *setup.Password
+	}
 
-    if resp.StatusCode != http.StatusOK {
-        errMsg, _ := io.ReadAll(resp.Body)
-        return nil, fmt.Errorf("failed to setup VPS (HTTP %d): %s", resp.StatusCode, string(errMsg))
-    }
+	bodyData, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
 
-    var vm VirtualMachine
-    if err := json.NewDecoder(resp.Body).Decode(&vm); err != nil {
-        return nil, fmt.Errorf("invalid setup response: %w", err)
-    }
-    return &vm, nil
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyData))
+	if err != nil {
+		return nil, err
+	}
+	c.addStandardHeaders(req)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errMsg, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to setup VPS (HTTP %d): %s", resp.StatusCode, string(errMsg))
+	}
+
+	var vm VirtualMachine
+	if err := json.NewDecoder(resp.Body).Decode(&vm); err != nil {
+		return nil, fmt.Errorf("invalid setup response: %w", err)
+	}
+	return &vm, nil
 }
 
 // GetVirtualMachine retrieves details for a specific VPS by ID.
 func (c *HostingerClient) GetVirtualMachine(vmID int) (*VirtualMachine, error) {
-    url := fmt.Sprintf("%s/api/vps/v1/virtual-machines/%d", c.BaseURL, vmID)
-    req, err := http.NewRequest("GET", url, nil)
-    if err != nil {
-        return nil, err
-    }
-    c.addStandardHeaders(req)
+	url := fmt.Sprintf("%s/api/vps/v1/virtual-machines/%d", c.BaseURL, vmID)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.addStandardHeaders(req)
 
-    resp, err := c.HTTPClient.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode == http.StatusNotFound {
-        return nil, ErrNotFound
-    }
-    if resp.StatusCode != http.StatusOK {
-        return nil, fmt.Errorf("failed to get VPS (HTTP %d)", resp.StatusCode)
-    }
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get VPS (HTTP %d)", resp.StatusCode)
+	}
 
-    var vm VirtualMachine
-    if err := json.NewDecoder(resp.Body).Decode(&vm); err != nil {
-        return nil, fmt.Errorf("invalid VPS detail response: %w", err)
-    }
-    return &vm, nil
+	var vm VirtualMachine
+	if err := json.NewDecoder(resp.Body).Decode(&vm); err != nil {
+		return nil, fmt.Errorf("invalid VPS detail response: %w", err)
+	}
+	return &vm, nil
 }
 
 func (c *HostingerClient) UpdateHostname(vmID int, hostname string) error {
-    url := fmt.Sprintf("%s/api/vps/v1/virtual-machines/%d/hostname", c.BaseURL, vmID)
+	url := fmt.Sprintf("%s/api/vps/v1/virtual-machines/%d/hostname", c.BaseURL, vmID)
 
-    body := map[string]string{
-        "hostname": hostname,
-    }
-    bodyData, err := json.Marshal(body)
-    if err != nil {
-        return err
-    }
+	body := map[string]string{
+		"hostname": hostname,
+	}
+	bodyData, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
 
-    req, err := http.NewRequest("PUT", url, bytes.NewBuffer(bodyData))
-    if err != nil {
-        return err
-    }
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(bodyData))
+	if err != nil {
+		return err
+	}
 
-    c.addStandardHeaders(req)
+	c.addStandardHeaders(req)
 
-    resp, err := c.HTTPClient.Do(req)
-    if err != nil {
-        return err
-    }
-    defer resp.Body.Close()
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusOK {
-        msg, _ := io.ReadAll(resp.Body)
-        return fmt.Errorf("update hostname failed (HTTP %d): %s", resp.StatusCode, string(msg))
-    }
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("update hostname failed (HTTP %d): %s", resp.StatusCode, string(msg))
+	}
 
-    return nil
+	return nil
 }
 
 func (c *HostingerClient) RecreateVirtualMachine(vmID int, templateID int, password *string, postScriptID *int) error {

@@ -1,14 +1,14 @@
 package hostinger
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"bytes"
-	"net/http"
 	"io"
+	"net/http"
 	"regexp"
+	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -42,7 +42,7 @@ func resourceHostingerVPSSSHKey() *schema.Resource {
 				ValidateFunc: validation.StringMatch(
 					regexp.MustCompile(`^(ssh-(rsa|ed25519|ecdsa)) `),
 					"must be a valid SSH public key (ssh-rsa, ssh-ed25519...)",
-				  ),
+				),
 			},
 		},
 	}
@@ -108,8 +108,12 @@ func resourceHostingerVPSSSHKeyRead(ctx context.Context, d *schema.ResourceData,
 	keyID, _ := strconv.Atoi(id)
 	for _, k := range result.Data {
 		if k.ID == keyID {
-			d.Set("name", k.Name)
-			d.Set("key", k.Key)
+			if err := d.Set("name", k.Name); err != nil {
+				return diag.FromErr(fmt.Errorf("failed to set name: %w", err))
+			}
+			if err := d.Set("key", k.Key); err != nil {
+				return diag.FromErr(fmt.Errorf("failed to set key: %w", err))
+			}
 			return nil
 		}
 	}
