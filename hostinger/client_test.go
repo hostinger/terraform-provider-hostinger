@@ -11,10 +11,12 @@ func TestValidateTemplateID(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/vps/v1/templates" {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[
+			if _, err := w.Write([]byte(`[
 				{"id": 1002, "name": "Debian 11"},
 				{"id": 1034, "name": "Ubuntu 20.04"}
-			]`))
+			]`)); err != nil {
+				t.Fatalf("failed to write mock response: %v", err)
+			}
 		} else {
 			t.Fatalf("unexpected request path: %s", r.URL.Path)
 		}
@@ -43,4 +45,3 @@ func TestValidateTemplateID(t *testing.T) {
 		t.Errorf("expected template ID 9999 to be invalid")
 	}
 }
-

@@ -89,7 +89,9 @@ func resourceHostingerDNSRecordCreate(d *schema.ResourceData, meta interface{}) 
 	}
 
 	var result map[string]interface{}
-	json.Unmarshal(respBody, &result)
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return fmt.Errorf("failed to unmarshal create response: %w", err)
+	}
 
 	id := fmt.Sprintf("%v", result["id"])
 	d.SetId(id)
@@ -122,14 +124,24 @@ func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) er
 	var data struct {
 		Records []map[string]interface{} `json:"records"`
 	}
-	json.Unmarshal(body, &data)
+	if err := json.Unmarshal(body, &data); err != nil {
+		return fmt.Errorf("failed to unmarshal read response: %w", err)
+	}
 
 	for _, record := range data.Records {
 		if fmt.Sprintf("%v", record["id"]) == id {
-			d.Set("name", record["name"])
-			d.Set("type", record["type"])
-			d.Set("value", record["value"])
-			d.Set("ttl", int(record["ttl"].(float64)))
+			if err := d.Set("name", record["name"]); err != nil {
+				return err
+			}
+			if err := d.Set("type", record["type"]); err != nil {
+				return err
+			}
+			if err := d.Set("value", record["value"]); err != nil {
+				return err
+			}
+			if err := d.Set("ttl", int(record["ttl"].(float64))); err != nil {
+				return err
+			}
 			return nil
 		}
 	}

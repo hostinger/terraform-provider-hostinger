@@ -1,14 +1,14 @@
 package hostinger
 
 import (
-	"context"
-	"strings"
-	"fmt"
-	"strconv"
-	"encoding/json"
 	"bytes"
-	"net/http"
+	"context"
+	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -37,7 +37,7 @@ func resourceHostingerVPSPostInstallScript() *schema.Resource {
 				Required:    true,
 				Description: "Shell script content to execute post-install.",
 				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-				  return strings.TrimSpace(old) == strings.TrimSpace(new)
+					return strings.TrimSpace(old) == strings.TrimSpace(new)
 				},
 			},
 		},
@@ -66,8 +66,12 @@ func resourceHostingerVPSPostInstallScriptRead(ctx context.Context, d *schema.Re
 		return diag.FromErr(fmt.Errorf("failed to read post-install script: %w", err))
 	}
 
-	d.Set("name", script.Name)
-	d.Set("content", script.Content)
+	if err := d.Set("name", script.Name); err != nil {
+		return diag.FromErr(fmt.Errorf("failed to set name: %w", err))
+	}
+	if err := d.Set("content", script.Content); err != nil {
+		return diag.FromErr(fmt.Errorf("failed to set content: %w", err))
+	}
 	return nil
 }
 
