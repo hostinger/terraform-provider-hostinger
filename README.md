@@ -17,6 +17,7 @@ This provider integrates with Hostinger's Public API to manage VPS servers, post
 - 🔎 Validate `plan`, `template_id`, and `data_center_id` before provisioning
 - 🧠 Auto-detect default payment method
 - 💥 Cancellation triggers actual subscription deletion via Hostinger Billing API
+- 🌐 Manage Domain DNS zone: add, update, and remove DNS records
 
 ---
 
@@ -37,7 +38,7 @@ terraform {
   required_providers {
     hostinger = {
       source = "hostinger/hostinger"
-      version = "0.1.3"
+      version = "0.1.6"
     }
   }
 }
