@@ -36,7 +36,7 @@ type PaymentMethod struct {
 
 func (client *HostingerClient) addStandardHeaders(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+client.Token)
-	req.Header.Set("User-Agent", "terraform-provider-hostinger/0.1.0")
+	req.Header.Set("User-Agent", "terraform-provider-hostinger/0.1.17")
 	req.Header.Set("Content-Type", "application/json")
 }
 

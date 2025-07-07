@@ -49,6 +49,6 @@ func providerConfigure(_ context.Context, d *schema.ResourceData) (interface{}, 
 	}
 
 	// Initialize the Hostinger API client
-	client := NewHostingerClient(token, "0.1.0")
+	client := NewHostingerClient(token, "0.1.17")
 	return client, diags
 }
