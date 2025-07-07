@@ -180,7 +180,6 @@ func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) er
 	return nil
 }
 
-
 func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*HostingerClient)
 
@@ -191,12 +190,28 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 	if len(parts) != 3 {
 		return fmt.Errorf("unexpected ID format: %s", d.Id())
 	}
-	name, recordType, value := parts[0], parts[1], parts[2]
+	name, recordType := parts[0], parts[1]
 
-	// First fetch zone data to find record index
 	url := fmt.Sprintf("%s/api/dns/v1/zones/%s", client.BaseURL, zone)
 
-	req, _ := http.NewRequest("GET", url, nil)
+	payload := map[string]interface{}{
+		"filters": []map[string]interface{}{
+			{
+				"name": name,
+				"type": recordType,
+			},
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal delete payload: %w", err)
+	}
+
+	req, err := http.NewRequest("DELETE", url, bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
 	client.addStandardHeaders(req)
 
 	resp, err := client.HTTPClient.Do(req)
@@ -205,81 +220,9 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to fetch DNS zone to find record for deletion: %s", body)
-	}
-
-	var entries []struct {
-		Name    string `json:"name"`
-		Type    string `json:"type"`
-		TTL     int    `json:"ttl"`
-		Records []struct {
-			Content    string `json:"content"`
-			IsDisabled bool   `json:"is_disabled"`
-		} `json:"records"`
-	}
-
-	if err := json.Unmarshal(body, &entries); err != nil {
-		return fmt.Errorf("failed to parse DNS zone during delete: %w", err)
-	}
-
-	// Rebuild the zone data minus the record to be deleted
-	var updated []map[string]interface{}
-	for _, entry := range entries {
-		if entry.Name == name && entry.Type == recordType {
-			newRecs := []map[string]interface{}{}
-			for _, rec := range entry.Records {
-				if rec.Content != value {
-					newRecs = append(newRecs, map[string]interface{}{
-						"content": rec.Content,
-					})
-				}
-			}
-			if len(newRecs) > 0 {
-				updated = append(updated, map[string]interface{}{
-					"name":    entry.Name,
-					"type":    entry.Type,
-					"ttl":     entry.TTL,
-					"records": newRecs,
-				})
-			}
-		} else {
-			// keep untouched
-			records := []map[string]interface{}{}
-			for _, rec := range entry.Records {
-				records = append(records, map[string]interface{}{
-					"content": rec.Content,
-				})
-			}
-			updated = append(updated, map[string]interface{}{
-				"name":    entry.Name,
-				"type":    entry.Type,
-				"ttl":     entry.TTL,
-				"records": records,
-			})
-		}
-	}
-
-	// Overwrite full zone without the deleted record
-	delPayload := map[string]interface{}{
-		"overwrite": true,
-		"zone":      updated,
-	}
-	delBody, _ := json.Marshal(delPayload)
-
-	delReq, _ := http.NewRequest("PUT", url, bytes.NewBuffer(delBody))
-	client.addStandardHeaders(delReq)
-
-	delResp, err := client.HTTPClient.Do(delReq)
-	if err != nil {
-		return err
-	}
-	defer delResp.Body.Close()
-
-	if delResp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(delResp.Body)
-		return fmt.Errorf("failed to update DNS zone during delete: %s", respBody)
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("failed to delete DNS record: %s", respBody)
 	}
 
 	d.SetId("")
