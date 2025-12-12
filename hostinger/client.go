@@ -116,61 +116,65 @@ func (c *HostingerClient) CancelSubscription(subscriptionID string) error {
 	return nil
 }
 
-// orderRequest and orderResponse define the structure for placing an order
-type orderItem struct {
-	ItemID   string `json:"item_id"`
-	Quantity int    `json:"quantity"`
-}
-type orderRequest struct {
-	PaymentMethodID int         `json:"payment_method_id"`
-	Items           []orderItem `json:"items"`
-}
-type orderResponse struct {
-	SubscriptionID string `json:"subscription_id"`
+// PurchaseVPSSetup defines the setup configuration for purchasing a new VPS.
+type PurchaseVPSSetup struct {
+	DataCenterID        int     `json:"data_center_id"`
+	TemplateID          int     `json:"template_id"`
+	Password            *string `json:"password,omitempty"`
+	Hostname            *string `json:"hostname,omitempty"`
+	PostInstallScriptID *int    `json:"post_install_script_id,omitempty"`
 }
 
-// OrderVPS places a new order for a VPS subscription and returns the subscription ID.
-func (c *HostingerClient) OrderVPS(plan string, paymentMethodID int) (string, error) {
-	url := c.BaseURL + "/api/billing/v1/orders"
+// PurchaseVPSRequest defines the payload for the new Purchase VPS API.
+type PurchaseVPSRequest struct {
+	ItemID          string           `json:"item_id"`
+	PaymentMethodID *int             `json:"payment_method_id,omitempty"`
+	Setup           PurchaseVPSSetup `json:"setup"`
+}
 
-	// Prepare request body
-	reqBody := orderRequest{
-		PaymentMethodID: paymentMethodID,
-		Items: []orderItem{
-			{ItemID: plan, Quantity: 1},
-		},
-	}
-	bodyData, err := json.Marshal(reqBody)
+// PurchaseVPSResponse defines the response from the Purchase VPS API.
+type PurchaseVPSResponse struct {
+	Order struct {
+		ID             int    `json:"id"`
+		SubscriptionID string `json:"subscription_id"`
+		Status         string `json:"status"`
+	} `json:"order"`
+	VirtualMachine VirtualMachine `json:"virtual_machine"`
+}
+
+// PurchaseVPS purchases and sets up a new VPS in a single API call.
+// This replaces the old OrderVPS + SetupVirtualMachine flow.
+func (c *HostingerClient) PurchaseVPS(req PurchaseVPSRequest) (*PurchaseVPSResponse, error) {
+	url := c.BaseURL + "/api/vps/v1/virtual-machines"
+
+	bodyData, err := json.Marshal(req)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("failed to marshal purchase request: %w", err)
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyData))
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyData))
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
-	c.addStandardHeaders(req)
+	c.addStandardHeaders(httpReq)
 
-	// Execute request
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// Read error response for details
 		errMsg, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("failed to place order (HTTP %d): %s", resp.StatusCode, string(errMsg))
+		return nil, fmt.Errorf("failed to purchase VPS (HTTP %d): %s", resp.StatusCode, string(errMsg))
 	}
 
-	// Parse successful order response
-	var orderRes orderResponse
-	if err := json.NewDecoder(resp.Body).Decode(&orderRes); err != nil {
-		return "", fmt.Errorf("invalid order response: %w", err)
+	var purchaseRes PurchaseVPSResponse
+	if err := json.NewDecoder(resp.Body).Decode(&purchaseRes); err != nil {
+		return nil, fmt.Errorf("invalid purchase response: %w", err)
 	}
-	return orderRes.SubscriptionID, nil
+
+	return &purchaseRes, nil
 }
 
 // VirtualMachine and IPAddress represent the relevant fields of a VPS instance
