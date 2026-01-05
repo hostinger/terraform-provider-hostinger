@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -100,10 +99,11 @@ func resourceHostingerVPS() *schema.Resource {
 func resourceHostingerVPSCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*HostingerClient)
 
-	// Gather required fields for the VPS order and setup
+	// Gather required fields for the VPS purchase
 	plan := d.Get("plan").(string)
 	dataCenterID := d.Get("data_center_id").(int)
 	templateID := d.Get("template_id").(int)
+
 	var passwordPtr *string
 	if v, ok := d.GetOk("password"); ok {
 		pw := v.(string)
@@ -114,18 +114,19 @@ func resourceHostingerVPSCreate(ctx context.Context, d *schema.ResourceData, m i
 		h := v.(string)
 		hostnamePtr = &h
 	}
-
-	var paymentMethodID int
-	if v, ok := d.GetOk("payment_method_id"); ok {
-		paymentMethodID = v.(int)
-	} else {
-		var err error
-		paymentMethodID, err = client.GetDefaultPaymentMethod()
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("failed to fetch default payment method: %w", err))
-		}
+	var postInstallScriptIDPtr *int
+	if v, ok := d.GetOk("post_install_script_id"); ok {
+		id := v.(int)
+		postInstallScriptIDPtr = &id
 	}
 
+	var paymentMethodIDPtr *int
+	if v, ok := d.GetOk("payment_method_id"); ok {
+		id := v.(int)
+		paymentMethodIDPtr = &id
+	}
+
+	// Validate inputs
 	ok, err := client.ValidatePlanID(plan)
 	if err != nil {
 		return diag.FromErr(fmt.Errorf("failed to validate plan: %w", err))
@@ -150,43 +151,25 @@ func resourceHostingerVPSCreate(ctx context.Context, d *schema.ResourceData, m i
 		return diag.Errorf("Invalid data center ID: %d", dataCenterID)
 	}
 
-	// Step 1: Place an order via Hostinger Billing API
-	subID, err := client.OrderVPS(plan, paymentMethodID)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("failed to create VPS order: %w", err))
+	// Purchase and setup VPS in a single API call
+	purchaseReq := PurchaseVPSRequest{
+		ItemID:          plan,
+		PaymentMethodID: paymentMethodIDPtr,
+		Setup: PurchaseVPSSetup{
+			DataCenterID:        dataCenterID,
+			TemplateID:          templateID,
+			Password:            passwordPtr,
+			Hostname:            hostnamePtr,
+			PostInstallScriptID: postInstallScriptIDPtr,
+		},
 	}
 
-	// Step 2: Find the new VPS instance by subscription_id (retry until it appears)
-	var vmID int
-	found := false
-	for i := 0; i < 10; i++ {
-		vmID, err = client.FindVirtualMachineBySubscription(subID)
-		if err != nil {
-			if err == ErrNotFound {
-				// Not found yet, wait and retry
-				time.Sleep(2 * time.Second)
-				continue
-			}
-			return diag.FromErr(fmt.Errorf("error finding VPS instance (subscription %s): %w", subID, err))
-		}
-		found = true
-		break
-	}
-	if !found {
-		return diag.Errorf("timed out waiting for VPS instance to be created (subscription %s)", subID)
+	purchaseRes, err := client.PurchaseVPS(purchaseReq)
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("failed to purchase VPS: %w", err))
 	}
 
-	// Step 3: Call the VPS setup endpoint to activate the server
-	setupReq := SetupRequest{
-		DataCenterID: dataCenterID,
-		TemplateID:   templateID,
-		Password:     passwordPtr,
-		Hostname:     hostnamePtr,
-	}
-	_, err = client.SetupVirtualMachine(vmID, setupReq)
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set up VPS (ID %d): %w", vmID, err))
-	}
+	vmID := purchaseRes.VirtualMachine.ID
 
 	// Attach SSH keys (optional)
 	if v, ok := d.GetOk("ssh_key_ids"); ok {
@@ -203,11 +186,10 @@ func resourceHostingerVPSCreate(ctx context.Context, d *schema.ResourceData, m i
 
 	// Set the resource ID to the VPS instance ID
 	d.SetId(strconv.Itoa(vmID))
-	// Save outputs
+
 	if err := d.Set("vps_id", vmID); err != nil {
 		return diag.FromErr(fmt.Errorf("failed to set vps_id: %w", err))
 	}
-	// If a hostname was provided, ensure it is saved (otherwise it will be fetched in Read)
 	if hostnamePtr != nil {
 		if err := d.Set("hostname", *hostnamePtr); err != nil {
 			return diag.FromErr(fmt.Errorf("failed to set hostname: %w", err))
