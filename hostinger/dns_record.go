@@ -64,7 +64,7 @@ func resourceHostingerDNSRecordCreate(d *schema.ResourceData, meta interface{}) 
 	url := fmt.Sprintf("%s/api/dns/v1/zones/%s", client.BaseURL, zone)
 
 	payload := map[string]interface{}{
-		"overwrite": true,
+		"overwrite": false,
 		"zone": []map[string]interface{}{
 			{
 				"name": name,
