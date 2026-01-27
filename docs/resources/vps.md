@@ -43,3 +43,26 @@ resource "hostinger_vps" "box" {
 - `status` – Status of the VPS provisioning.
 - `vps_id` – Same as `id`, retained for convenience and backward compatibility.
 
+---
+
+## Import
+
+Existing VPS instances can be imported using their VPS ID. The import process will automatically retrieve all necessary configuration details from the Hostinger API, including plan, data center, and template information.
+
+```bash
+terraform import hostinger_vps.example 123456
+```
+
+After importing, run `terraform state show hostinger_vps.example` to see all the imported values, then add them to your configuration file:
+
+```hcl
+resource "hostinger_vps" "example" {
+  plan           = "KVM 8"              # Automatically retrieved
+  data_center_id = 22                   # Automatically retrieved
+  template_id    = 1141                 # Automatically retrieved
+  hostname       = "srv123456.hstgr.cloud" # Automatically retrieved
+}
+```
+
+All fields including `plan`, `data_center_id`, `template_id`, `hostname`, `ipv4_address`, and `ipv6_address` are automatically populated from the imported resource, providing a seamless import experience similar to major cloud providers.
+
