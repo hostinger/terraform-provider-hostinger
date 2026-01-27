@@ -12,6 +12,7 @@ This provider integrates with Hostinger's Public API to manage VPS servers, post
 
 - ✅ Create and delete VPS servers
 - 🔄 In-place updates for hostname, SSH keys, OS template
+- 📦 **Import existing VPS instances** with automatic configuration retrieval
 - 🔐 Attach SSH keys (inline or existing)
 - 📜 Upload post-install scripts
 - 🔎 Validate `plan`, `template_id`, and `data_center_id` before provisioning
@@ -38,7 +39,7 @@ terraform {
   required_providers {
     hostinger = {
       source = "hostinger/hostinger"
-      version = "0.1.19"
+      version = "0.1.21"
     }
   }
 }
@@ -96,6 +97,32 @@ output "available_templates" {
 - `hostinger_vps` — Provisions a VPS
 - `hostinger_vps_ssh_key` — Manages account-level SSH keys
 - `hostinger_vps_post_install_script` — Upload post-install scripts
+
+---
+
+## Importing Existing Resources
+
+You can import existing VPS instances into your Terraform state. The import process automatically retrieves all configuration details including plan, data center, and template information:
+
+```bash
+# Import a VPS using its ID
+terraform import hostinger_vps.my_vps 1092628
+```
+
+After importing, check the imported values:
+```bash
+terraform state show hostinger_vps.my_vps
+```
+
+Then add the resource to your configuration with the imported values:
+```hcl
+resource "hostinger_vps" "my_vps" {
+  plan           = "KVM 8"              # Auto-retrieved during import
+  data_center_id = 22                   # Auto-retrieved during import
+  template_id    = 1141                 # Auto-retrieved during import
+  hostname       = "srv1092628.hstgr.cloud"
+}
+```
 
 ---
 

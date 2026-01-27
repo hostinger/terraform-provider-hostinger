@@ -84,6 +84,48 @@ func (c *HostingerClient) GetSubscriptionIDByVMID(vmID int) (string, error) {
 	return vm.SubscriptionID, nil
 }
 
+// GetSubscriptionDetails fetches subscription details including the plan information
+func (c *HostingerClient) GetSubscriptionDetails(subscriptionID string) (*SubscriptionDetails, error) {
+	url := fmt.Sprintf("%s/api/billing/v1/subscriptions/%s", c.BaseURL, subscriptionID)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.addStandardHeaders(req)
+	
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get subscription details (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+	
+	var details SubscriptionDetails
+	if err := json.NewDecoder(resp.Body).Decode(&details); err != nil {
+		return nil, fmt.Errorf("invalid subscription details response: %w", err)
+	}
+	return &details, nil
+}
+
+// SubscriptionDetails contains detailed subscription information including the plan
+type SubscriptionDetails struct {
+	ID       string `json:"id"`
+	Status   string `json:"status"`
+	Plan     string `json:"plan"`
+	ItemID   string `json:"item_id"`
+	Product  struct {
+		Type       string `json:"type"`
+		ResourceID int    `json:"resource_id"`
+	} `json:"product"`
+}
+
 type Subscription struct {
 	ID      string `json:"id"`
 	Product struct {
@@ -185,6 +227,18 @@ type VirtualMachine struct {
 	State          string      `json:"state"`
 	IPv4           []IPAddress `json:"ipv4"`
 	IPv6           []IPAddress `json:"ipv6"`
+	Plan           string      `json:"plan,omitempty"`
+	DataCenterID   int         `json:"data_center_id,omitempty"`
+	TemplateID     int         `json:"template_id,omitempty"`
+	Template       interface{} `json:"template,omitempty"` // Can be string or object
+	DataCenter     interface{} `json:"data_center,omitempty"` // Can be string or object  
+	OS             string      `json:"os,omitempty"`
+	OSName         string      `json:"os_name,omitempty"`
+	Resources      struct {
+		CPU    int `json:"cpu"`
+		RAM    int `json:"ram"`
+		Disk   int `json:"disk"`
+	} `json:"resources,omitempty"`
 }
 type IPAddress struct {
 	Address string `json:"address"`
@@ -311,6 +365,52 @@ func (c *HostingerClient) GetVirtualMachine(vmID int) (*VirtualMachine, error) {
 		return nil, fmt.Errorf("invalid VPS detail response: %w", err)
 	}
 	return &vm, nil
+}
+
+// GetVirtualMachineWithFullDetails retrieves complete VPS details including plan information
+func (c *HostingerClient) GetVirtualMachineWithFullDetails(vmID int) (*VirtualMachine, error) {
+	// First get the basic VM info
+	vm, err := c.GetVirtualMachine(vmID)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Extract IDs from template/datacenter if they're objects
+	if vm.Template != nil {
+		if tmplObj, ok := vm.Template.(map[string]interface{}); ok {
+			if id, exists := tmplObj["id"]; exists {
+				if idFloat, ok := id.(float64); ok {
+					vm.TemplateID = int(idFloat)
+				}
+			}
+		}
+	}
+	
+	if vm.DataCenter != nil {
+		if dcObj, ok := vm.DataCenter.(map[string]interface{}); ok {
+			if id, exists := dcObj["id"]; exists {
+				if idFloat, ok := id.(float64); ok {
+					vm.DataCenterID = int(idFloat)
+				}
+			}
+		}
+	}
+	
+	// Try to get subscription details to enrich with plan information
+	if vm.SubscriptionID != "" {
+		subDetails, err := c.GetSubscriptionDetails(vm.SubscriptionID)
+		if err == nil && subDetails != nil {
+			// Enrich VM with plan information from subscription
+			if subDetails.ItemID != "" {
+				vm.Plan = subDetails.ItemID
+			} else if subDetails.Plan != "" {
+				vm.Plan = subDetails.Plan
+			}
+		}
+		// We don't fail if subscription details can't be fetched, we just use what we have
+	}
+	
+	return vm, nil
 }
 
 func (c *HostingerClient) UpdateHostname(vmID int, hostname string) error {
