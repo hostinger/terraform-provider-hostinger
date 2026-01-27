@@ -39,7 +39,7 @@ terraform {
   required_providers {
     hostinger = {
       source = "hostinger/hostinger"
-      version = "0.1.21"
+      version = "0.1.22"
     }
   }
 }
