@@ -31,6 +31,8 @@ resource "hostinger_vps" "web" {
 | `hostinger_vps` | Provision and manage a VPS instance |
 | `hostinger_vps_post_install_script` | Create a reusable post-install script |
 | `hostinger_vps_ssh_key` | Add and attach an SSH key to a VPS |
+| `hostinger_vps_firewall` | Manage a VPS firewall and its rules |
+| `hostinger_vps_firewall_activation` | Activate a firewall on a VPS instance |
 
 ---
 

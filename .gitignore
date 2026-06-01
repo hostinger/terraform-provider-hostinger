@@ -7,6 +7,9 @@
 *.test
 *.out
 
+# GoReleaser output
+dist/
+
 # Terraform related
 .terraform/
 *.tfstate
