@@ -52,7 +52,7 @@ func dataSourceHostingerVPSTemplatesRead(ctx context.Context, d *schema.Resource
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return diag.Errorf("failed to fetch templates: %s", resp.Status)
@@ -116,7 +116,7 @@ func dataSourceHostingerVPSDataCentersRead(ctx context.Context, d *schema.Resour
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var result []map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -160,7 +160,7 @@ func dataSourceHostingerVPSPlansRead(ctx context.Context, d *schema.ResourceData
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var raw []map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
