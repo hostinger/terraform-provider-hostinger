@@ -119,7 +119,7 @@ func resourceHostingerDNSRecordCreate(d *schema.ResourceData, meta interface{}) 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
@@ -175,7 +175,7 @@ func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) er
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
@@ -263,7 +263,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
@@ -363,7 +363,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 			respBody, _ := io.ReadAll(resp.Body)
@@ -395,7 +395,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 			if err != nil {
 				return err
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusOK {
 				respBody, _ := io.ReadAll(resp.Body)
@@ -432,7 +432,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {

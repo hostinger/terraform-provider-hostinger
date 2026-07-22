@@ -50,7 +50,7 @@ func (c *HostingerClient) GetDefaultPaymentMethod() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
@@ -97,7 +97,7 @@ func (c *HostingerClient) GetSubscriptionDetails(subscriptionID string) (*Subscr
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
@@ -148,7 +148,7 @@ func (c *HostingerClient) CancelSubscription(subscriptionID string) error {
 	if err != nil {
 		return fmt.Errorf("API request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
@@ -204,7 +204,7 @@ func (c *HostingerClient) PurchaseVPS(req PurchaseVPSRequest) (*PurchaseVPSRespo
 	if err != nil {
 		return nil, fmt.Errorf("API request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		errMsg, _ := io.ReadAll(resp.Body)
@@ -257,7 +257,7 @@ func (c *HostingerClient) GetVirtualMachines() ([]VirtualMachine, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to list VPS instances (HTTP %d)", resp.StatusCode)
@@ -324,7 +324,7 @@ func (c *HostingerClient) SetupVirtualMachine(vmID int, setup SetupRequest) (*Vi
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		errMsg, _ := io.ReadAll(resp.Body)
@@ -351,7 +351,7 @@ func (c *HostingerClient) GetVirtualMachine(vmID int) (*VirtualMachine, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
@@ -435,7 +435,7 @@ func (c *HostingerClient) UpdateHostname(vmID int, hostname string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
@@ -473,7 +473,7 @@ func (c *HostingerClient) RecreateVirtualMachine(vmID int, templateID int, passw
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
@@ -493,7 +493,7 @@ func (c *HostingerClient) GetSSHKeyIDsForVM(vmID int) ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
