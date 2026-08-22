@@ -44,6 +44,10 @@ func resourceHostingerDNSRecord() *schema.Resource {
 		Read:   resourceHostingerDNSRecordRead,
 		Delete: resourceHostingerDNSRecordDelete,
 
+		Importer: &schema.ResourceImporter{
+			StateContext: resourceHostingerDNSRecordImport,
+		},
+
 		Schema: map[string]*schema.Schema{
 			"id": {
 				Type:     schema.TypeString,
@@ -160,7 +164,10 @@ func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) er
 	}
 
 	// Parse synthetic ID
-	parts := strings.Split(d.Id(), "|")
+	// SplitN with a limit of 3 keeps everything after the second separator as
+	// the value, so a value containing "|" (TXT content, for instance) parses
+	// back out intact.
+	parts := strings.SplitN(d.Id(), "|", 3)
 	if len(parts) != 3 {
 		return fmt.Errorf("unexpected ID format: %s", d.Id())
 	}
@@ -238,13 +245,58 @@ func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) er
 	return nil
 }
 
+// resourceHostingerDNSRecordImport brings an existing DNS record under
+// management. Records already present in a zone cannot be created -- the create
+// path appends with overwrite=false, and Hostinger rejects an append that
+// duplicates an existing record -- so import is the only route from a populated
+// zone to managed state.
+//
+// The import ID is "zone|name|type|value". Read derives every attribute from
+// the zone plus the "name|type|value" ID it already uses, so import only has to
+// seed those two and delegate, which keeps name and content matching in one
+// place.
+func resourceHostingerDNSRecordImport(_ context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	// SplitN with a limit of 4 leaves any "|" in the value as part of the
+	// remainder, so values such as TXT content survive the round trip.
+	parts := strings.SplitN(d.Id(), "|", 4)
+	if len(parts) != 4 {
+		return nil, fmt.Errorf("unexpected import ID format %q: expected \"zone|name|type|value\"", d.Id())
+	}
+	zone, name, recordType, value := parts[0], parts[1], parts[2], parts[3]
+
+	if zone == "" || name == "" || recordType == "" {
+		return nil, fmt.Errorf("unexpected import ID format %q: zone, name and type must all be set", d.Id())
+	}
+
+	if err := d.Set("zone", zone); err != nil {
+		return nil, fmt.Errorf("error setting zone: %w", err)
+	}
+	d.SetId(fmt.Sprintf("%s|%s|%s", name, recordType, value))
+
+	if err := resourceHostingerDNSRecordRead(d, meta); err != nil {
+		return nil, err
+	}
+
+	// Read clears the ID when nothing in the zone matches. Report that as an
+	// error rather than handing back an empty resource, which Terraform would
+	// otherwise surface as a confusing "resource does not exist" after import.
+	if d.Id() == "" {
+		return nil, fmt.Errorf("no %s record named %q with value %q found in zone %q", recordType, name, value, zone)
+	}
+
+	return []*schema.ResourceData{d}, nil
+}
+
 func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*HostingerClient)
 
 	zone := d.Get("zone").(string)
 
 	// Parse synthetic ID  
-	parts := strings.Split(d.Id(), "|")
+	// SplitN with a limit of 3 keeps everything after the second separator as
+	// the value, so a value containing "|" (TXT content, for instance) parses
+	// back out intact.
+	parts := strings.SplitN(d.Id(), "|", 3)
 	if len(parts) != 3 {
 		return fmt.Errorf("unexpected ID format: %s", d.Id())
 	}
