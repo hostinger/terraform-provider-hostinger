@@ -17,6 +17,11 @@ type HostingerClient struct {
 	HTTPClient *http.Client
 	Token      string
 	Version    string
+
+	// zoneCache collapses the repeated whole-zone reads the DNS resource makes.
+	// Its zero value is ready to use, so a HostingerClient built as a struct
+	// literal gets it too.
+	zoneCache zoneCache
 }
 
 // NewHostingerClient initializes a new API client with the given token

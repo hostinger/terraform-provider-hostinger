@@ -116,6 +116,12 @@ func resourceHostingerDNSRecordCreate(d *schema.ResourceData, meta interface{}) 
 	client.addStandardHeaders(req)
 
 	resp, err := client.HTTPClient.Do(req)
+
+	// The zone may have changed even if the request reported an error, so drop
+	// the cached copy before looking at the result. The poll below reads the
+	// record back, and a stale zone would make it never appear.
+	client.InvalidateZone(zone)
+
 	if err != nil {
 		return err
 	}
@@ -166,26 +172,11 @@ func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) er
 	}
 	name, recordType, value := parts[0], parts[1], parts[2]
 
-	url := fmt.Sprintf("%s/api/dns/v1/zones/%s", client.BaseURL, zone)
-
-	req, _ := http.NewRequest("GET", url, nil)
-	client.addStandardHeaders(req)
-
-	resp, err := client.HTTPClient.Do(req)
+	// Terraform calls Read once per record, so a plan over a whole zone would
+	// otherwise fetch that zone once per record in it.
+	entries, err := client.GetZoneRecords(zone)
 	if err != nil {
 		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to read DNS records: %s", body)
-	}
-
-	var entries []DNSEntry
-
-	if err := json.Unmarshal(body, &entries); err != nil {
-		return fmt.Errorf("failed to unmarshal read response: %w", err)
 	}
 
 	for _, entry := range entries {
@@ -250,30 +241,17 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 	}
 	name, recordType, valueToDelete := parts[0], parts[1], parts[2]
 
-	// First, fetch all existing records to see if there are other records we need to preserve
 	url := fmt.Sprintf("%s/api/dns/v1/zones/%s", client.BaseURL, zone)
 
-	req, err := http.NewRequest("GET", url, nil)
+	// Deleting a value out of a multi-value set means deleting the whole
+	// name/type group and putting the survivors back, so whichever path is
+	// taken below the zone ends up changed.
+	defer client.InvalidateZone(zone)
+
+	// First, fetch all existing records to see if there are other records we need to preserve
+	entries, err := client.GetZoneRecords(zone)
 	if err != nil {
 		return err
-	}
-	client.addStandardHeaders(req)
-
-	resp, err := client.HTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to read DNS records: %s", body)
-	}
-
-	var entries []DNSEntry
-
-	if err := json.Unmarshal(body, &entries); err != nil {
-		return fmt.Errorf("failed to unmarshal records: %w", err)
 	}
 
 	// Check if there are other records of the same name/type that we need to preserve
@@ -348,18 +326,18 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 			},
 		}
 
-		body, err = json.Marshal(payload)
+		body, err := json.Marshal(payload)
 		if err != nil {
 			return fmt.Errorf("failed to marshal delete payload: %w", err)
 		}
 
-		req, err = http.NewRequest("DELETE", url, bytes.NewBuffer(body))
+		req, err := http.NewRequest("DELETE", url, bytes.NewBuffer(body))
 		if err != nil {
 			return err
 		}
 		client.addStandardHeaders(req)
 
-		resp, err = client.HTTPClient.Do(req)
+		resp, err := client.HTTPClient.Do(req)
 		if err != nil {
 			return err
 		}
@@ -417,18 +395,18 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 		},
 	}
 
-	body, err = json.Marshal(payload)
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal delete payload: %w", err)
 	}
 
-	req, err = http.NewRequest("DELETE", url, bytes.NewBuffer(body))
+	req, err := http.NewRequest("DELETE", url, bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}
 	client.addStandardHeaders(req)
 
-	resp, err = client.HTTPClient.Do(req)
+	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
