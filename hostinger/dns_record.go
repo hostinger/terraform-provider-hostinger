@@ -115,7 +115,7 @@ func resourceHostingerDNSRecordCreate(d *schema.ResourceData, meta interface{}) 
 
 	client.addStandardHeaders(req)
 
-	resp, err := client.HTTPClient.Do(req)
+	resp, err := client.do(req)
 	if err != nil {
 		return err
 	}
@@ -171,7 +171,7 @@ func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) er
 	req, _ := http.NewRequest("GET", url, nil)
 	client.addStandardHeaders(req)
 
-	resp, err := client.HTTPClient.Do(req)
+	resp, err := client.do(req)
 	if err != nil {
 		return err
 	}
@@ -259,7 +259,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 	}
 	client.addStandardHeaders(req)
 
-	resp, err := client.HTTPClient.Do(req)
+	resp, err := client.do(req)
 	if err != nil {
 		return err
 	}
@@ -359,7 +359,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 		}
 		client.addStandardHeaders(req)
 
-		resp, err = client.HTTPClient.Do(req)
+		resp, err = client.do(req)
 		if err != nil {
 			return err
 		}
@@ -391,7 +391,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 			}
 			client.addStandardHeaders(req)
 
-			resp, err = client.HTTPClient.Do(req)
+			resp, err = client.do(req)
 			if err != nil {
 				return err
 			}
@@ -428,7 +428,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 	}
 	client.addStandardHeaders(req)
 
-	resp, err = client.HTTPClient.Do(req)
+	resp, err = client.do(req)
 	if err != nil {
 		return err
 	}

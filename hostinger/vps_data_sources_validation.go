@@ -13,7 +13,7 @@ func (c *HostingerClient) ValidatePlanID(plan string) (bool, error) {
 	req, _ := http.NewRequest("GET", url, nil)
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return false, err
 	}
@@ -49,7 +49,7 @@ func (c *HostingerClient) ValidateTemplateID(id int) (bool, error) {
 	req, _ := http.NewRequest("GET", url, nil)
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return false, err
 	}
@@ -81,7 +81,7 @@ func (c *HostingerClient) ValidateDataCenterID(id int) (bool, error) {
 	req, _ := http.NewRequest("GET", url, nil)
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return false, err
 	}

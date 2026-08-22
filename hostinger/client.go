@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -34,6 +37,148 @@ type PaymentMethod struct {
 	IsDefault bool `json:"is_default"`
 }
 
+const (
+	// maxRateLimitWait caps how long a Retry-After is worth sitting out inline.
+	// Hostinger's limiter hands back fixed-duration blocks that have been
+	// observed to run to well over half an hour; no apply should block on that.
+	maxRateLimitWait = 30 * time.Second
+
+	// maxRateLimitRetries is how many times a request is replayed after a short
+	// rate limit before giving up.
+	maxRateLimitRetries = 2
+)
+
+// RateLimitError reports an HTTP 429 that the client did not wait out.
+//
+// Cloudflare fronts developers.hostinger.com and answers a burst with error
+// 1015 plus a Retry-After giving the seconds left on the block. The block is a
+// fixed duration covering the whole API host rather than a rolling window per
+// endpoint, so retrying before it expires only burns requests -- which is why
+// this is reported with the wait rather than retried indefinitely.
+type RateLimitError struct {
+	// RetryAfter is the wait the response asked for, or zero if it carried no
+	// usable Retry-After header.
+	RetryAfter time.Duration
+	ClearsAt   time.Time
+	Attempts   int
+	Body       string
+}
+
+func (e *RateLimitError) Error() string {
+	msg := "rate limited by Hostinger (HTTP 429, Cloudflare 1015)"
+
+	if e.RetryAfter > 0 {
+		msg += fmt.Sprintf(": Retry-After %s, clears at %s UTC",
+			e.RetryAfter.Round(time.Second), e.ClearsAt.UTC().Format("15:04:05"))
+	} else {
+		msg += " with no usable Retry-After header"
+	}
+
+	if e.Attempts > 1 {
+		msg += fmt.Sprintf(", after %d attempts", e.Attempts)
+	}
+
+	msg += ". The block covers the whole API host, not just this endpoint, so retrying before it clears only burns requests."
+
+	if body := strings.TrimSpace(e.Body); body != "" {
+		msg += " Response: " + body
+	}
+
+	return msg
+}
+
+// parseRetryAfter reads a Retry-After header, which may be either a number of
+// seconds or an HTTP date.
+func parseRetryAfter(header http.Header, now time.Time) (time.Duration, bool) {
+	value := strings.TrimSpace(header.Get("Retry-After"))
+	if value == "" {
+		return 0, false
+	}
+
+	if seconds, err := strconv.Atoi(value); err == nil {
+		if seconds < 0 {
+			return 0, false
+		}
+		return time.Duration(seconds) * time.Second, true
+	}
+
+	if when, err := http.ParseTime(value); err == nil {
+		wait := when.Sub(now)
+		if wait < 0 {
+			wait = 0
+		}
+		return wait, true
+	}
+
+	return 0, false
+}
+
+// rewind returns a copy of req with a fresh body.
+//
+// A request body is a reader that the first attempt consumes, so replaying a
+// request without rewinding it would send an empty body. http.NewRequest
+// populates GetBody for the in-memory bodies this provider builds.
+func rewind(req *http.Request) (*http.Request, error) {
+	if req.Body == nil || req.Body == http.NoBody {
+		return req, nil
+	}
+	if req.GetBody == nil {
+		return nil, errors.New("request body cannot be replayed")
+	}
+
+	body, err := req.GetBody()
+	if err != nil {
+		return nil, err
+	}
+
+	replay := req.Clone(req.Context())
+	replay.Body = body
+	return replay, nil
+}
+
+// do executes a request, replaying it if the API answers with a rate limit
+// short enough to be worth waiting out.
+//
+// Anything longer is reported straight away as a RateLimitError naming the wait
+// and the time it clears, rather than surfacing as an opaque "error code: 1015"
+// that gives no clue how long the caller is locked out for.
+func (c *HostingerClient) do(req *http.Request) (*http.Response, error) {
+	for attempt := 1; ; attempt++ {
+		resp, err := c.HTTPClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusTooManyRequests {
+			return resp, nil
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+
+		rateLimitErr := &RateLimitError{Attempts: attempt, Body: string(body)}
+
+		wait, ok := parseRetryAfter(resp.Header, time.Now())
+		if !ok {
+			return nil, rateLimitErr
+		}
+
+		rateLimitErr.RetryAfter = wait
+		rateLimitErr.ClearsAt = time.Now().Add(wait)
+
+		if wait > maxRateLimitWait || attempt > maxRateLimitRetries {
+			return nil, rateLimitErr
+		}
+
+		replay, err := rewind(req)
+		if err != nil {
+			return nil, rateLimitErr
+		}
+		req = replay
+
+		time.Sleep(wait)
+	}
+}
+
 func (client *HostingerClient) addStandardHeaders(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+client.Token)
 	req.Header.Set("User-Agent", "terraform-provider-hostinger/0.1.19")
@@ -46,7 +191,7 @@ func (c *HostingerClient) GetDefaultPaymentMethod() (int, error) {
 	req, _ := http.NewRequest("GET", url, nil)
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return 0, err
 	}
@@ -93,7 +238,7 @@ func (c *HostingerClient) GetSubscriptionDetails(subscriptionID string) (*Subscr
 	}
 	c.addStandardHeaders(req)
 	
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +289,7 @@ func (c *HostingerClient) CancelSubscription(subscriptionID string) error {
 
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return fmt.Errorf("API request failed: %w", err)
 	}
@@ -200,7 +345,7 @@ func (c *HostingerClient) PurchaseVPS(req PurchaseVPSRequest) (*PurchaseVPSRespo
 	}
 	c.addStandardHeaders(httpReq)
 
-	resp, err := c.HTTPClient.Do(httpReq)
+	resp, err := c.do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("API request failed: %w", err)
 	}
@@ -253,7 +398,7 @@ func (c *HostingerClient) GetVirtualMachines() ([]VirtualMachine, error) {
 	}
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +465,7 @@ func (c *HostingerClient) SetupVirtualMachine(vmID int, setup SetupRequest) (*Vi
 	}
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +492,7 @@ func (c *HostingerClient) GetVirtualMachine(vmID int) (*VirtualMachine, error) {
 	}
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +576,7 @@ func (c *HostingerClient) UpdateHostname(vmID int, hostname string) error {
 
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -469,7 +614,7 @@ func (c *HostingerClient) RecreateVirtualMachine(vmID int, templateID int, passw
 	}
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -489,7 +634,7 @@ func (c *HostingerClient) GetSSHKeyIDsForVM(vmID int) ([]int, error) {
 	req, _ := http.NewRequest("GET", url, nil)
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -60,7 +60,7 @@ func resourceHostingerVPSSSHKeyCreate(ctx context.Context, d *schema.ResourceDat
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	client.addStandardHeaders(req)
 
-	resp, err := client.HTTPClient.Do(req)
+	resp, err := client.do(req)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -87,7 +87,7 @@ func resourceHostingerVPSSSHKeyRead(ctx context.Context, d *schema.ResourceData,
 	req, _ := http.NewRequest("GET", url, nil)
 	client.addStandardHeaders(req)
 
-	resp, err := client.HTTPClient.Do(req)
+	resp, err := client.do(req)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -129,7 +129,7 @@ func resourceHostingerVPSSSHKeyDelete(ctx context.Context, d *schema.ResourceDat
 	req, _ := http.NewRequest("DELETE", url, nil)
 	client.addStandardHeaders(req)
 
-	resp, err := client.HTTPClient.Do(req)
+	resp, err := client.do(req)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -154,7 +154,7 @@ func (c *HostingerClient) AttachSSHKeysToVM(vmID int, keyIDs []int) error {
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}

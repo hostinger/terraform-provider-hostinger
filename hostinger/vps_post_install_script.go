@@ -112,7 +112,7 @@ func (c *HostingerClient) CreatePostInstallScript(name, content string) (int, er
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(data))
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return 0, err
 	}
@@ -135,7 +135,7 @@ func (c *HostingerClient) GetPostInstallScript(id int) (*PostInstallScript, erro
 	req, _ := http.NewRequest("GET", url, nil)
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +161,7 @@ func (c *HostingerClient) UpdatePostInstallScript(id int, name, content string) 
 	req, _ := http.NewRequest("PUT", url, bytes.NewBuffer(data))
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -179,7 +179,7 @@ func (c *HostingerClient) DeletePostInstallScript(id int) error {
 	req, _ := http.NewRequest("DELETE", url, nil)
 	c.addStandardHeaders(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}

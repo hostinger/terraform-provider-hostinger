@@ -48,7 +48,7 @@ func dataSourceHostingerVPSTemplatesRead(ctx context.Context, d *schema.Resource
 	req, _ := http.NewRequest("GET", client.BaseURL+"/api/vps/v1/templates", nil)
 	client.addStandardHeaders(req)
 
-	resp, err := client.HTTPClient.Do(req)
+	resp, err := client.do(req)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -112,7 +112,7 @@ func dataSourceHostingerVPSDataCentersRead(ctx context.Context, d *schema.Resour
 	req, _ := http.NewRequest("GET", client.BaseURL+"/api/vps/v1/data-centers", nil)
 	client.addStandardHeaders(req)
 
-	resp, err := client.HTTPClient.Do(req)
+	resp, err := client.do(req)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -156,7 +156,7 @@ func dataSourceHostingerVPSPlansRead(ctx context.Context, d *schema.ResourceData
 	req, _ := http.NewRequest("GET", client.BaseURL+"/api/billing/v1/catalog", nil)
 	client.addStandardHeaders(req)
 
-	resp, err := client.HTTPClient.Do(req)
+	resp, err := client.do(req)
 	if err != nil {
 		return diag.FromErr(err)
 	}
