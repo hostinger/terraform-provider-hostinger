@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -40,9 +41,9 @@ func compareTXTContent(content1, content2 string) bool {
 
 func resourceHostingerDNSRecord() *schema.Resource {
 	return &schema.Resource{
-		Create: resourceHostingerDNSRecordCreate,
-		Read:   resourceHostingerDNSRecordRead,
-		Delete: resourceHostingerDNSRecordDelete,
+		CreateContext: resourceHostingerDNSRecordCreate,
+		ReadContext:   resourceHostingerDNSRecordRead,
+		DeleteContext: resourceHostingerDNSRecordDelete,
 
 		Schema: map[string]*schema.Schema{
 			"id": {
@@ -79,7 +80,19 @@ func resourceHostingerDNSRecord() *schema.Resource {
 	}
 }
 
-func resourceHostingerDNSRecordCreate(d *schema.ResourceData, meta interface{}) error {
+func resourceHostingerDNSRecordCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	return diag.FromErr(createDNSRecord(ctx, d, meta))
+}
+
+func resourceHostingerDNSRecordRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	return diag.FromErr(readDNSRecord(ctx, d, meta))
+}
+
+func resourceHostingerDNSRecordDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	return diag.FromErr(deleteDNSRecord(ctx, d, meta))
+}
+
+func createDNSRecord(ctx context.Context, d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*HostingerClient)
 
 	zone := d.Get("zone").(string)
@@ -108,7 +121,7 @@ func resourceHostingerDNSRecordCreate(d *schema.ResourceData, meta interface{}) 
 
 	body, _ := json.Marshal(payload)
 
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(body))
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}
@@ -130,8 +143,8 @@ func resourceHostingerDNSRecordCreate(d *schema.ResourceData, meta interface{}) 
 	d.SetId(fmt.Sprintf("%s|%s|%s", name, recordType, value))
 
 	// Use retry logic to handle eventual consistency
-	err = retry.RetryContext(context.Background(), 30*time.Second, func() *retry.RetryError {
-		err := resourceHostingerDNSRecordRead(d, meta)
+	err = retry.RetryContext(ctx, 30*time.Second, func() *retry.RetryError {
+		err := readDNSRecord(ctx, d, meta)
 		if err != nil {
 			return retry.NonRetryableError(err)
 		}
@@ -149,7 +162,7 @@ func resourceHostingerDNSRecordCreate(d *schema.ResourceData, meta interface{}) 
 	return nil
 }
 
-func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) error {
+func readDNSRecord(ctx context.Context, d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*HostingerClient)
 
 	zone := d.Get("zone").(string)
@@ -168,7 +181,7 @@ func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) er
 
 	url := fmt.Sprintf("%s/api/dns/v1/zones/%s", client.BaseURL, zone)
 
-	req, _ := http.NewRequest("GET", url, nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	client.addStandardHeaders(req)
 
 	resp, err := client.HTTPClient.Do(req)
@@ -238,7 +251,7 @@ func resourceHostingerDNSRecordRead(d *schema.ResourceData, meta interface{}) er
 	return nil
 }
 
-func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) error {
+func deleteDNSRecord(ctx context.Context, d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*HostingerClient)
 
 	zone := d.Get("zone").(string)
@@ -253,7 +266,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 	// First, fetch all existing records to see if there are other records we need to preserve
 	url := fmt.Sprintf("%s/api/dns/v1/zones/%s", client.BaseURL, zone)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return err
 	}
@@ -353,7 +366,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 			return fmt.Errorf("failed to marshal delete payload: %w", err)
 		}
 
-		req, err = http.NewRequest("DELETE", url, bytes.NewBuffer(body))
+		req, err = http.NewRequestWithContext(ctx, "DELETE", url, bytes.NewBuffer(body))
 		if err != nil {
 			return err
 		}
@@ -385,7 +398,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 				return fmt.Errorf("failed to marshal recreate payload: %w", err)
 			}
 
-			req, err = http.NewRequest("PUT", url, bytes.NewBuffer(body))
+			req, err = http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer(body))
 			if err != nil {
 				return err
 			}
@@ -422,7 +435,7 @@ func resourceHostingerDNSRecordDelete(d *schema.ResourceData, meta interface{}) 
 		return fmt.Errorf("failed to marshal delete payload: %w", err)
 	}
 
-	req, err = http.NewRequest("DELETE", url, bytes.NewBuffer(body))
+	req, err = http.NewRequestWithContext(ctx, "DELETE", url, bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}
