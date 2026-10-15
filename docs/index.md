@@ -2,7 +2,7 @@
 
 The **Hostinger Terraform Provider** lets you provision and manage Virtual Private Servers (VPS) on Hostinger via Terraform.
 
-Easily automate server provisioning, attach SSH keys, run post-install scripts, and manage compute across multiple data centers — all backed by Hostinger’s public API.
+Easily automate server provisioning, add SSH keys, run post-install scripts, and manage compute across multiple data centers — all backed by Hostinger’s public API.
 
 ---
 
@@ -30,7 +30,7 @@ resource "hostinger_vps" "web" {
 |------|-------------|
 | `hostinger_vps` | Provision and manage a VPS instance |
 | `hostinger_vps_post_install_script` | Create a reusable post-install script |
-| `hostinger_vps_ssh_key` | Add and attach an SSH key to a VPS |
+| `hostinger_vps_ssh_key` | Add an SSH key to a VPS |
 
 ---
 

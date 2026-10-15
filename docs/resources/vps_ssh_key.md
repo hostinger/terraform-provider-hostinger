@@ -1,6 +1,6 @@
 # hostinger_vps_ssh_key
 
-The `hostinger_vps_ssh_key` resource allows you to manage SSH public keys in your Hostinger account. These keys can be attached to VPS instances at creation or after provisioning.
+The `hostinger_vps_ssh_key` resource allows you to manage SSH public keys in your Hostinger account. These keys can be added to VPS instances at creation or after provisioning.
 
 ---
 

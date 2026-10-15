@@ -73,7 +73,7 @@ func resourceHostingerVPS() *schema.Resource {
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeInt},
-				Description: "List of SSH key IDs to attach to the VPS after setup.",
+				Description: "List of SSH key IDs to add to the VPS after setup.",
 			},
 			// Output attributes:
 			"ipv4_address": {
@@ -175,7 +175,7 @@ func resourceHostingerVPSCreate(ctx context.Context, d *schema.ResourceData, m i
 
 	vmID := purchaseRes.VirtualMachine.ID
 
-	// Attach SSH keys (optional)
+	// Add SSH keys (optional)
 	if v, ok := d.GetOk("ssh_key_ids"); ok {
 		rawIDs := v.([]interface{})
 		keyByID, err := client.publicKeyStringsByID()
@@ -192,7 +192,7 @@ func resourceHostingerVPSCreate(ctx context.Context, d *schema.ResourceData, m i
 			keyStrings = append(keyStrings, key)
 		}
 		if err := client.AddVMSSHKeys(vmID, keyStrings); err != nil {
-			return diag.FromErr(fmt.Errorf("failed to attach SSH keys: %w", err))
+			return diag.FromErr(fmt.Errorf("failed to add SSH keys: %w", err))
 		}
 	}
 
