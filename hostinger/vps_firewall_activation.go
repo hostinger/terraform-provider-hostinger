@@ -131,7 +131,7 @@ func resourceHostingerVPSFirewallActivationUpdate(ctx context.Context, d *schema
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		if _, err := client.SyncFirewall(firewallID); err != nil {
+		if err := client.SyncFirewall(firewallID); err != nil {
 			return diag.FromErr(fmt.Errorf("failed to sync firewall %d: %w", firewallID, err))
 		}
 	}
@@ -190,9 +190,11 @@ func (c *HostingerClient) DeactivateFirewall(firewallID, vmID int) (*FirewallAct
 }
 
 // SyncFirewall pushes the firewall's current rules to all VMs it is activated on.
-func (c *HostingerClient) SyncFirewall(firewallID int) (*FirewallAction, error) {
+func (c *HostingerClient) SyncFirewall(firewallID int) error {
 	url := fmt.Sprintf("%s/api/vps/v1/firewall/%d/sync", c.BaseURL, firewallID)
-	return c.postFirewallAction(url, "sync")
+	// sync returns Common.SuccessEmptyResource, not an action like activate/deactivate.
+	_, err := c.postFirewallAction(url, "sync")
+	return err
 }
 
 // firewallVMAction performs an activate/deactivate firewall operation on a VM;

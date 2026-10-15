@@ -200,16 +200,12 @@ func TestSyncFirewall(t *testing.T) {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":8123712,"name":"action_name","state":"success"}`))
+		_, _ = w.Write([]byte(`{"message":"Request accepted"}`))
 	}))
 	defer server.Close()
 
-	res, err := newTestClient(server).SyncFirewall(65224)
-	if err != nil {
+	if err := newTestClient(server).SyncFirewall(65224); err != nil {
 		t.Fatalf("expected no error, got %v", err)
-	}
-	if res.State != "success" {
-		t.Errorf("expected state 'success', got %q", res.State)
 	}
 }
 
