@@ -221,23 +221,24 @@ func (c *HostingerClient) PurchaseVPS(req PurchaseVPSRequest) (*PurchaseVPSRespo
 
 // VirtualMachine and IPAddress represent the relevant fields of a VPS instance
 type VirtualMachine struct {
-	ID             int         `json:"id"`
-	SubscriptionID string      `json:"subscription_id"`
-	Hostname       string      `json:"hostname"`
-	State          string      `json:"state"`
-	IPv4           []IPAddress `json:"ipv4"`
-	IPv6           []IPAddress `json:"ipv6"`
-	Plan           string      `json:"plan,omitempty"`
-	DataCenterID   int         `json:"data_center_id,omitempty"`
-	TemplateID     int         `json:"template_id,omitempty"`
-	Template       interface{} `json:"template,omitempty"` // Can be string or object
-	DataCenter     interface{} `json:"data_center,omitempty"` // Can be string or object  
-	OS             string      `json:"os,omitempty"`
-	OSName         string      `json:"os_name,omitempty"`
-	Resources      struct {
-		CPU    int `json:"cpu"`
-		RAM    int `json:"ram"`
-		Disk   int `json:"disk"`
+	ID              int         `json:"id"`
+	SubscriptionID  string      `json:"subscription_id"`
+	FirewallGroupID *int        `json:"firewall_group_id"`
+	Hostname        string      `json:"hostname"`
+	State           string      `json:"state"`
+	IPv4            []IPAddress `json:"ipv4"`
+	IPv6            []IPAddress `json:"ipv6"`
+	Plan            string      `json:"plan,omitempty"`
+	DataCenterID    int         `json:"data_center_id,omitempty"`
+	TemplateID      int         `json:"template_id,omitempty"`
+	Template        interface{} `json:"template,omitempty"`    // Can be string or object
+	DataCenter      interface{} `json:"data_center,omitempty"` // Can be string or object
+	OS              string      `json:"os,omitempty"`
+	OSName          string      `json:"os_name,omitempty"`
+	Resources       struct {
+		CPU  int `json:"cpu"`
+		RAM  int `json:"ram"`
+		Disk int `json:"disk"`
 	} `json:"resources,omitempty"`
 }
 type IPAddress struct {
