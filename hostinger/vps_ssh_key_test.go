@@ -84,6 +84,22 @@ func TestListPublicKeys(t *testing.T) {
 	}
 }
 
+func TestDiffVMSSHKeys(t *testing.T) {
+	desired := map[string]bool{"a": true, "b": true}
+	previous := map[string]bool{"b": true, "c": true, "gone": true}
+	onVM := map[string]bool{"b": true, "c": true, "unmanaged": true}
+
+	toAdd, toRemove := diffVMSSHKeys(desired, previous, onVM)
+
+	// "b" already on the VM; "gone" not on the VM (nothing to remove); "unmanaged" never touched
+	if !reflect.DeepEqual(toAdd, []string{"a"}) {
+		t.Errorf("unexpected toAdd: %v", toAdd)
+	}
+	if !reflect.DeepEqual(toRemove, []string{"c"}) {
+		t.Errorf("unexpected toRemove: %v", toRemove)
+	}
+}
+
 func assertKeysBody(t *testing.T, body []byte, want []string) {
 	t.Helper()
 	var req struct {

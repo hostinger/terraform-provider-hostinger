@@ -16,6 +16,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
+var sshPublicKeyPattern = regexp.MustCompile(`^(ssh-(rsa|ed25519|ecdsa)) `)
+
 type SSHKey struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
@@ -48,7 +50,7 @@ func resourceHostingerVPSSSHKey() *schema.Resource {
 				ForceNew:    true,
 				Description: "The actual SSH public key string.",
 				ValidateFunc: validation.StringMatch(
-					regexp.MustCompile(`^(ssh-(rsa|ed25519|ecdsa)) `),
+					sshPublicKeyPattern,
 					"must be a valid SSH public key (ssh-rsa, ssh-ed25519...)",
 				),
 			},

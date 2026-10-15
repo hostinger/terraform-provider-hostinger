@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -73,7 +74,21 @@ func resourceHostingerVPS() *schema.Resource {
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeInt},
+				Deprecated:  "Use ssh_keys instead: account-level public keys are deprecated in the Hostinger API.",
 				Description: "List of SSH key IDs to add to the VPS after setup.",
+			},
+			"ssh_keys": {
+				Type:      schema.TypeList,
+				Optional:  true,
+				Sensitive: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+					ValidateFunc: validation.StringMatch(
+						sshPublicKeyPattern,
+						"must be a valid SSH public key (ssh-rsa, ssh-ed25519...)",
+					),
+				},
+				Description: "List of SSH public keys (OpenSSH format) to add to the VPS after setup.",
 			},
 			// Output attributes:
 			"ipv4_address": {
@@ -176,20 +191,26 @@ func resourceHostingerVPSCreate(ctx context.Context, d *schema.ResourceData, m i
 	vmID := purchaseRes.VirtualMachine.ID
 
 	// Add SSH keys (optional)
-	if v, ok := d.GetOk("ssh_key_ids"); ok {
-		rawIDs := v.([]interface{})
-		keyByID, err := client.publicKeyStringsByID()
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("failed to list public keys: %w", err))
+	rawIDs := d.Get("ssh_key_ids").([]interface{})
+	rawKeys := d.Get("ssh_keys").([]interface{})
+	if len(rawIDs) > 0 || len(rawKeys) > 0 {
+		keyStrings := make([]string, 0, len(rawIDs)+len(rawKeys))
+		for _, raw := range rawKeys {
+			keyStrings = append(keyStrings, strings.TrimSpace(raw.(string)))
 		}
-		keyStrings := make([]string, 0, len(rawIDs))
-		for _, raw := range rawIDs {
-			id := raw.(int)
-			key, ok := keyByID[id]
-			if !ok {
-				return diag.Errorf("SSH key with ID %d not found among account public keys", id)
+		if len(rawIDs) > 0 {
+			keyByID, err := client.publicKeyStringsByID()
+			if err != nil {
+				return diag.FromErr(fmt.Errorf("failed to list public keys: %w", err))
 			}
-			keyStrings = append(keyStrings, key)
+			for _, raw := range rawIDs {
+				id := raw.(int)
+				key, ok := keyByID[id]
+				if !ok {
+					return diag.Errorf("SSH key with ID %d not found among account public keys", id)
+				}
+				keyStrings = append(keyStrings, key)
+			}
 		}
 		if err := client.AddVMSSHKeys(vmID, keyStrings); err != nil {
 			return diag.FromErr(fmt.Errorf("failed to add SSH keys: %w", err))
@@ -317,22 +338,34 @@ func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m i
 		}
 	}
 
-	if d.HasChange("ssh_key_ids") {
+	if d.HasChange("ssh_key_ids") || d.HasChange("ssh_keys") {
 		vmID := d.Get("vps_id").(int)
 
-		oldRaw, newRaw := d.GetChange("ssh_key_ids")
-		desired := make(map[int]bool)
-		for _, id := range newRaw.([]interface{}) {
-			desired[id.(int)] = true
-		}
-		previous := make(map[int]bool)
-		for _, id := range oldRaw.([]interface{}) {
-			previous[id.(int)] = true
-		}
+		oldIDRaw, newIDRaw := d.GetChange("ssh_key_ids")
+		oldKeyRaw, newKeyRaw := d.GetChange("ssh_keys")
 
-		keyByID, err := client.publicKeyStringsByID()
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("failed to list public keys: %w", err))
+		desired := stringSet(newKeyRaw.([]interface{}))
+		previous := stringSet(oldKeyRaw.([]interface{}))
+
+		if len(newIDRaw.([]interface{}))+len(oldIDRaw.([]interface{})) > 0 {
+			keyByID, err := client.publicKeyStringsByID()
+			if err != nil {
+				return diag.FromErr(fmt.Errorf("failed to list public keys: %w", err))
+			}
+			for _, raw := range newIDRaw.([]interface{}) {
+				id := raw.(int)
+				key, ok := keyByID[id]
+				if !ok {
+					return diag.Errorf("SSH key with ID %d not found among account public keys", id)
+				}
+				desired[key] = true
+			}
+			// shortcut: a key already deleted from the account can't be resolved to its key string, so it's left on the VM; upgrade by storing key strings in state
+			for _, raw := range oldIDRaw.([]interface{}) {
+				if key, ok := keyByID[raw.(int)]; ok {
+					previous[key] = true
+				}
+			}
 		}
 
 		vmKeys, err := client.ListVMSSHKeys(vmID)
@@ -344,27 +377,7 @@ func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m i
 			onVM[strings.TrimSpace(k.Key)] = true
 		}
 
-		toAdd := []string{}
-		for id := range desired {
-			key, ok := keyByID[id]
-			if !ok {
-				return diag.Errorf("SSH key with ID %d not found among account public keys", id)
-			}
-			if !onVM[key] {
-				toAdd = append(toAdd, key)
-			}
-		}
-
-		// shortcut: a key already deleted from the account can't be resolved to its key string, so it's left on the VM; upgrade by storing key strings in state
-		toRemove := []string{}
-		for id := range previous {
-			if desired[id] {
-				continue
-			}
-			if key, ok := keyByID[id]; ok && onVM[key] {
-				toRemove = append(toRemove, key)
-			}
-		}
+		toAdd, toRemove := diffVMSSHKeys(desired, previous, onVM)
 
 		if len(toAdd) > 0 {
 			if err := client.AddVMSSHKeys(vmID, toAdd); err != nil {
@@ -380,6 +393,32 @@ func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m i
 
 	// Always re-read state after update
 	return resourceHostingerVPSRead(ctx, d, m)
+}
+
+func stringSet(raw []interface{}) map[string]bool {
+	set := make(map[string]bool, len(raw))
+	for _, v := range raw {
+		set[strings.TrimSpace(v.(string))] = true
+	}
+	return set
+}
+
+// diffVMSSHKeys computes which keys to add (desired but not on the VM) and
+// which to remove (previously managed, no longer desired, still on the VM).
+func diffVMSSHKeys(desired, previous, onVM map[string]bool) (toAdd, toRemove []string) {
+	for key := range desired {
+		if !onVM[key] {
+			toAdd = append(toAdd, key)
+		}
+	}
+	for key := range previous {
+		if !desired[key] && onVM[key] {
+			toRemove = append(toRemove, key)
+		}
+	}
+	sort.Strings(toAdd)
+	sort.Strings(toRemove)
+	return toAdd, toRemove
 }
 
 func resourceHostingerVPSImport(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
