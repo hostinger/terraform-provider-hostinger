@@ -23,6 +23,8 @@ func Provider() *schema.Provider {
 			"hostinger_vps":                     resourceHostingerVPS(),
 			"hostinger_vps_post_install_script": resourceHostingerVPSPostInstallScript(),
 			"hostinger_vps_ssh_key":             resourceHostingerVPSSSHKey(),
+			"hostinger_vps_firewall":            resourceHostingerVPSFirewall(),
+			"hostinger_vps_firewall_activation": resourceHostingerVPSFirewallActivation(),
 			"hostinger_dns_record":              resourceHostingerDNSRecord(),
 		},
 		DataSourcesMap: map[string]*schema.Resource{

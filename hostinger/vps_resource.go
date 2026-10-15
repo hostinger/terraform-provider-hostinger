@@ -111,6 +111,11 @@ func resourceHostingerVPS() *schema.Resource {
 				Computed:    true,
 				Description: "Current status of the VPS (e.g., running, stopped, installing, reinstalling).",
 			},
+			"firewall_group_id": {
+				Type:        schema.TypeInt,
+				Computed:    true,
+				Description: "ID of the firewall currently active on the VPS (0 if none).",
+			},
 		},
 	}
 }
@@ -261,6 +266,13 @@ func resourceHostingerVPSRead(ctx context.Context, d *schema.ResourceData, m int
 	}
 	if err := d.Set("status", vm.State); err != nil {
 		return diag.FromErr(fmt.Errorf("failed to set status: %w", err))
+	}
+	firewallGroupID := 0
+	if vm.FirewallGroupID != nil {
+		firewallGroupID = *vm.FirewallGroupID
+	}
+	if err := d.Set("firewall_group_id", firewallGroupID); err != nil {
+		return diag.FromErr(fmt.Errorf("failed to set firewall_group_id: %w", err))
 	}
 	if len(vm.IPv4) > 0 {
 		if err := d.Set("ipv4_address", vm.IPv4[0].Address); err != nil {
