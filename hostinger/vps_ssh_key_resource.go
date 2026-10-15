@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -19,6 +20,13 @@ type SSHKey struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 	Key  string `json:"key"`
+}
+
+type VMSSHKey struct {
+	Key  string `json:"key"`
+	Type string `json:"type"`
+	Data string `json:"data"`
+	Name string `json:"name"`
 }
 
 func resourceHostingerVPSSSHKey() *schema.Resource {
@@ -82,31 +90,14 @@ func resourceHostingerVPSSSHKeyCreate(ctx context.Context, d *schema.ResourceDat
 func resourceHostingerVPSSSHKeyRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*HostingerClient)
 	id := d.Id()
-	url := client.BaseURL + "/api/vps/v1/public-keys"
 
-	req, _ := http.NewRequest("GET", url, nil)
-	client.addStandardHeaders(req)
-
-	resp, err := client.HTTPClient.Do(req)
+	keys, err := client.ListPublicKeys()
 	if err != nil {
-		return diag.FromErr(err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		msg, _ := io.ReadAll(resp.Body)
-		return diag.FromErr(fmt.Errorf("read ssh key failed: %s", msg))
-	}
-
-	var result struct {
-		Data []SSHKey `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return diag.FromErr(err)
+		return diag.FromErr(fmt.Errorf("read ssh key failed: %w", err))
 	}
 
 	keyID, _ := strconv.Atoi(id)
-	for _, k := range result.Data {
+	for _, k := range keys {
 		if k.ID == keyID {
 			if err := d.Set("name", k.Name); err != nil {
 				return diag.FromErr(fmt.Errorf("failed to set name: %w", err))
@@ -143,15 +134,67 @@ func resourceHostingerVPSSSHKeyDelete(ctx context.Context, d *schema.ResourceDat
 	return nil
 }
 
-// Call from the VPS resource after creation or update
-func (c *HostingerClient) AttachSSHKeysToVM(vmID int, keyIDs []int) error {
-	url := fmt.Sprintf("%s/api/vps/v1/public-keys/attach/%d", c.BaseURL, vmID)
-	payload := map[string]interface{}{
-		"ids": keyIDs,
-	}
-	body, _ := json.Marshal(payload)
+func (c *HostingerClient) ListPublicKeys() ([]SSHKey, error) {
+	req, _ := http.NewRequest("GET", c.BaseURL+"/api/vps/v1/public-keys", nil)
+	c.addStandardHeaders(req)
 
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("list public keys failed (HTTP %d): %s", resp.StatusCode, msg)
+	}
+
+	var result struct {
+		Data []SSHKey `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return result.Data, nil
+}
+
+func (c *HostingerClient) ListVMSSHKeys(vmID int) ([]VMSSHKey, error) {
+	url := fmt.Sprintf("%s/api/vps/v1/virtual-machines/%d/ssh-keys", c.BaseURL, vmID)
+
+	req, _ := http.NewRequest("GET", url, nil)
+	c.addStandardHeaders(req)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to fetch SSH keys for VM (HTTP %d): %s", resp.StatusCode, msg)
+	}
+
+	var keys []VMSSHKey
+	if err := json.NewDecoder(resp.Body).Decode(&keys); err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+func (c *HostingerClient) AddVMSSHKeys(vmID int, keys []string) error {
+	return c.updateVMSSHKeys(http.MethodPost, vmID, keys)
+}
+
+func (c *HostingerClient) RemoveVMSSHKeys(vmID int, keys []string) error {
+	return c.updateVMSSHKeys(http.MethodDelete, vmID, keys)
+}
+
+func (c *HostingerClient) updateVMSSHKeys(method string, vmID int, keys []string) error {
+	url := fmt.Sprintf("%s/api/vps/v1/virtual-machines/%d/ssh-keys", c.BaseURL, vmID)
+	body, _ := json.Marshal(map[string][]string{"keys": keys})
+
+	req, _ := http.NewRequest(method, url, bytes.NewBuffer(body))
 	c.addStandardHeaders(req)
 
 	resp, err := c.HTTPClient.Do(req)
@@ -162,7 +205,18 @@ func (c *HostingerClient) AttachSSHKeysToVM(vmID int, keyIDs []int) error {
 
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("attach ssh keys failed: %s", msg)
+		return fmt.Errorf("%s ssh keys on VM failed (HTTP %d): %s", method, resp.StatusCode, msg)
 	}
 	return nil
+}
+func (c *HostingerClient) publicKeyStringsByID() (map[int]string, error) {
+	keys, err := c.ListPublicKeys()
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int]string, len(keys))
+	for _, k := range keys {
+		byID[k.ID] = strings.TrimSpace(k.Key)
+	}
+	return byID, nil
 }
