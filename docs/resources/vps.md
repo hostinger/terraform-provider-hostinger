@@ -31,7 +31,8 @@ resource "hostinger_vps" "box" {
 - `hostname` – (Optional) Fully Qualified Domain Name (FQDN). If not set, one will be auto-generated.
 - `payment_method_id` – (Optional) Hostinger Payment Method ID. If not set, default will be used.
 - `post_install_script_id` – (Optional) ID of a reusable script to run after provisioning.
-- `ssh_key_ids` – (Optional) List of public SSH key IDs to attach to the VPS.
+- `ssh_keys` – (Optional, Sensitive) List of SSH public keys (OpenSSH format) to add to the VPS.
+- `ssh_key_ids` – (Optional, **Deprecated**: use `ssh_keys`) List of public SSH key IDs to add to the VPS. Requires account-level public keys, which are deprecated in the Hostinger API.
 
 ---
 

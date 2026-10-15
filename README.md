@@ -13,7 +13,7 @@ This provider integrates with Hostinger's Public API to manage VPS servers, post
 - ✅ Create and delete VPS servers
 - 🔄 In-place updates for hostname, SSH keys, OS template
 - 📦 **Import existing VPS instances** with automatic configuration retrieval
-- 🔐 Attach SSH keys (inline or existing)
+- 🔐 Add SSH keys (inline or existing)
 - 📜 Upload post-install scripts
 - 🔎 Validate `plan`, `template_id`, and `data_center_id` before provisioning
 - 🧠 Auto-detect default payment method

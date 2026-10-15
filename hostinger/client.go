@@ -482,36 +482,3 @@ func (c *HostingerClient) RecreateVirtualMachine(vmID int, templateID int, passw
 
 	return nil
 }
-
-func (c *HostingerClient) GetSSHKeyIDsForVM(vmID int) ([]int, error) {
-	url := fmt.Sprintf("%s/api/vps/v1/virtual-machines/%d/public-keys", c.BaseURL, vmID)
-
-	req, _ := http.NewRequest("GET", url, nil)
-	c.addStandardHeaders(req)
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		msg, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to fetch SSH keys for VM (HTTP %d): %s", resp.StatusCode, msg)
-	}
-
-	var result struct {
-		Data []struct {
-			ID int `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	ids := make([]int, 0, len(result.Data))
-	for _, k := range result.Data {
-		ids = append(ids, k.ID)
-	}
-	return ids, nil
-}
