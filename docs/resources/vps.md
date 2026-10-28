@@ -42,6 +42,7 @@ resource "hostinger_vps" "box" {
 - `ipv4_address` – Public IPv4 address of the VPS.
 - `ipv6_address` – Public IPv6 address of the VPS.
 - `status` – Status of the VPS provisioning.
+- `ssh_key_ids_resolved` – (Sensitive) Public keys that `ssh_key_ids` resolved to when last applied. Kept in state so a key removed from `ssh_key_ids` is revoked from the VPS even after its account-level key has been deleted.
 - `vps_id` – Same as `id`, retained for convenience and backward compatibility.
 
 ---
