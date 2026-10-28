@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
@@ -22,6 +23,9 @@ func resourceHostingerVPS() *schema.Resource {
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceHostingerVPSImport,
 		},
+		CustomizeDiff: customdiff.ComputedIf("ssh_key_ids_resolved", func(ctx context.Context, d *schema.ResourceDiff, m interface{}) bool {
+			return d.HasChange("ssh_key_ids")
+		}),
 		Schema: map[string]*schema.Schema{
 			"plan": {
 				Type:         schema.TypeString,
@@ -89,6 +93,13 @@ func resourceHostingerVPS() *schema.Resource {
 					),
 				},
 				Description: "List of SSH public keys (OpenSSH format) to add to the VPS after setup.",
+			},
+			"ssh_key_ids_resolved": {
+				Type:        schema.TypeList,
+				Computed:    true,
+				Sensitive:   true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "Public keys that `ssh_key_ids` resolved to when last applied, kept so they can still be revoked from the VPS once the account key is deleted.",
 			},
 			// Output attributes:
 			"ipv4_address": {
@@ -208,14 +219,14 @@ func resourceHostingerVPSCreate(ctx context.Context, d *schema.ResourceData, m i
 			if err != nil {
 				return diag.FromErr(fmt.Errorf("failed to list public keys: %w", err))
 			}
-			for _, raw := range rawIDs {
-				id := raw.(int)
-				key, ok := keyByID[id]
-				if !ok {
-					return diag.Errorf("SSH key with ID %d not found among account public keys", id)
-				}
-				keyStrings = append(keyStrings, key)
+			resolved, err := resolveSSHKeyIDs(keyByID, rawIDs)
+			if err != nil {
+				return diag.FromErr(err)
 			}
+			if err := d.Set("ssh_key_ids_resolved", resolved); err != nil {
+				return diag.FromErr(fmt.Errorf("failed to set ssh_key_ids_resolved: %w", err))
+			}
+			keyStrings = append(keyStrings, resolved...)
 		}
 		if err := client.AddVMSSHKeys(vmID, keyStrings); err != nil {
 			return diag.FromErr(fmt.Errorf("failed to add SSH keys: %w", err))
@@ -292,6 +303,25 @@ func resourceHostingerVPSRead(ctx context.Context, d *schema.ResourceData, m int
 			return diag.FromErr(fmt.Errorf("failed to clear ipv6_address: %w", err))
 		}
 	}
+
+	// State written before ssh_key_ids_resolved existed: backfill it while the account keys still resolve,
+	// so the plan refresh captures them before a rotation deletes the account key.
+	rawIDs := d.Get("ssh_key_ids").([]interface{})
+	if len(rawIDs) > 0 && len(d.Get("ssh_key_ids_resolved").([]interface{})) == 0 {
+		keyByID, err := client.publicKeyStringsByID()
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("failed to list public keys: %w", err))
+		}
+		resolved := make([]string, 0, len(rawIDs))
+		for _, raw := range rawIDs {
+			if key, ok := keyByID[raw.(int)]; ok {
+				resolved = append(resolved, key)
+			}
+		}
+		if err := d.Set("ssh_key_ids_resolved", resolved); err != nil {
+			return diag.FromErr(fmt.Errorf("failed to set ssh_key_ids_resolved: %w", err))
+		}
+	}
 	return nil
 }
 
@@ -355,24 +385,29 @@ func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m i
 
 		oldIDRaw, newIDRaw := d.GetChange("ssh_key_ids")
 		oldKeyRaw, newKeyRaw := d.GetChange("ssh_keys")
+		// Prior state, not the account: an account key deleted since the last apply must still be revoked.
+		oldResolvedRaw, _ := d.GetChange("ssh_key_ids_resolved")
 
 		desired := stringSet(newKeyRaw.([]interface{}))
 		previous := stringSet(oldKeyRaw.([]interface{}))
+		for key := range stringSet(oldResolvedRaw.([]interface{})) {
+			previous[key] = true
+		}
 
+		var resolved []string
 		if len(newIDRaw.([]interface{}))+len(oldIDRaw.([]interface{})) > 0 {
 			keyByID, err := client.publicKeyStringsByID()
 			if err != nil {
 				return diag.FromErr(fmt.Errorf("failed to list public keys: %w", err))
 			}
-			for _, raw := range newIDRaw.([]interface{}) {
-				id := raw.(int)
-				key, ok := keyByID[id]
-				if !ok {
-					return diag.Errorf("SSH key with ID %d not found among account public keys", id)
-				}
+			resolved, err = resolveSSHKeyIDs(keyByID, newIDRaw.([]interface{}))
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			for _, key := range resolved {
 				desired[key] = true
 			}
-			// shortcut: a key already deleted from the account can't be resolved to its key string, so it's left on the VM; upgrade by storing key strings in state
+			// Fallback for state that predates ssh_key_ids_resolved and was never refreshed.
 			for _, raw := range oldIDRaw.([]interface{}) {
 				if key, ok := keyByID[raw.(int)]; ok {
 					previous[key] = true
@@ -401,6 +436,9 @@ func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m i
 				return diag.FromErr(fmt.Errorf("failed to remove SSH keys during update: %w", err))
 			}
 		}
+		if err := d.Set("ssh_key_ids_resolved", resolved); err != nil {
+			return diag.FromErr(fmt.Errorf("failed to set ssh_key_ids_resolved: %w", err))
+		}
 	}
 
 	// Always re-read state after update
@@ -413,6 +451,19 @@ func stringSet(raw []interface{}) map[string]bool {
 		set[strings.TrimSpace(v.(string))] = true
 	}
 	return set
+}
+
+// resolveSSHKeyIDs maps account public key IDs to their key strings, in order.
+func resolveSSHKeyIDs(keyByID map[int]string, ids []interface{}) ([]string, error) {
+	keys := make([]string, 0, len(ids))
+	for _, raw := range ids {
+		key, ok := keyByID[raw.(int)]
+		if !ok {
+			return nil, fmt.Errorf("SSH key with ID %d not found among account public keys", raw.(int))
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
 }
 
 // diffVMSSHKeys computes which keys to add (desired but not on the VM) and
