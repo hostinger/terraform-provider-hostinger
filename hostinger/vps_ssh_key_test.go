@@ -120,10 +120,11 @@ func assertKeysBody(t *testing.T, body []byte, want []string) {
 
 // fakeKeyAPI serves account public keys and the VM's authorized keys, recording add/remove calls.
 type fakeKeyAPI struct {
-	account map[int]string
-	onVM    []string
-	added   []string
-	removed []string
+	account    map[int]string
+	onVM       []string
+	added      []string
+	removed    []string
+	failRemove bool
 }
 
 func (f *fakeKeyAPI) serve(t *testing.T) *httptest.Server {
@@ -161,6 +162,8 @@ func (f *fakeKeyAPI) serve(t *testing.T) *httptest.Server {
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			if r.Method == http.MethodPost {
 				f.added = append(f.added, body.Keys...)
+			} else if f.failRemove {
+				w.WriteHeader(http.StatusInternalServerError)
 			} else {
 				f.removed = append(f.removed, body.Keys...)
 			}
@@ -225,6 +228,32 @@ func TestVPSUpdate_RevokesRotatedSSHKeyIDDeletedFromAccount(t *testing.T) {
 	}
 	if got := newState.Attributes["ssh_key_ids_resolved.0"]; got != "ssh-ed25519 NEW" {
 		t.Errorf("expected resolved key to be updated, got %q", got)
+	}
+}
+
+func TestVPSUpdate_FailedRevocationKeepsPriorStateForRetry(t *testing.T) {
+	api := &fakeKeyAPI{
+		account:    map[int]string{8: "ssh-ed25519 NEW"},
+		onVM:       []string{"ssh-ed25519 OLD"},
+		failRemove: true,
+	}
+	state := vpsState(map[string]string{
+		"ssh_key_ids.#": "1", "ssh_key_ids.0": "7",
+		"ssh_key_ids_resolved.#": "1", "ssh_key_ids_resolved.0": "ssh-ed25519 OLD",
+	})
+
+	newState, diags := applySSHKeyIDs(t, api, state, 8)
+	if !diags.HasError() {
+		t.Fatal("expected the failed removal to surface as an error")
+	}
+	want := map[string]string{
+		"ssh_key_ids.#": "1", "ssh_key_ids.0": "7",
+		"ssh_key_ids_resolved.#": "1", "ssh_key_ids_resolved.0": "ssh-ed25519 OLD",
+	}
+	for k, v := range want {
+		if got := newState.Attributes[k]; got != v {
+			t.Errorf("expected %s to stay %q so the next plan retries, got %q", k, v, got)
+		}
 	}
 }
 

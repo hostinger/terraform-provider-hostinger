@@ -121,12 +121,13 @@ func resourceHostingerVPSFirewallActivationRead(ctx context.Context, d *schema.R
 	return nil
 }
 
-func resourceHostingerVPSFirewallActivationUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func resourceHostingerVPSFirewallActivationUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) (diags diag.Diagnostics) {
 	client := m.(*HostingerClient)
 
 	// Only "triggers" is updatable; firewall_id and virtual_machine_id are ForceNew.
 	// A change to triggers re-applies (syncs) the firewall to the VM.
 	if d.HasChange("triggers") {
+		defer revertOnError(d, &diags, "triggers")
 		firewallID, _, err := parseFirewallActivationID(d.Id())
 		if err != nil {
 			return diag.FromErr(err)
