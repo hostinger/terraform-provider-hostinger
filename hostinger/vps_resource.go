@@ -345,7 +345,7 @@ func resourceHostingerVPSDelete(ctx context.Context, d *schema.ResourceData, m i
 	return nil
 }
 
-func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) (diags diag.Diagnostics) {
 	client := m.(*HostingerClient)
 	vmID, _ := strconv.Atoi(d.Id())
 
@@ -381,6 +381,7 @@ func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m i
 	}
 
 	if d.HasChange("ssh_key_ids") || d.HasChange("ssh_keys") {
+		defer revertOnError(d, &diags, "ssh_key_ids", "ssh_keys", "ssh_key_ids_resolved")
 		vmID := d.Get("vps_id").(int)
 
 		oldIDRaw, newIDRaw := d.GetChange("ssh_key_ids")
@@ -443,6 +444,20 @@ func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m i
 
 	// Always re-read state after update
 	return resourceHostingerVPSRead(ctx, d, m)
+}
+
+// revertOnError restores the prior state of keys when the update failed. SDKv2 otherwise saves the
+// planned values as applied, and Read never refreshes these keys, so a failed change would not be retried.
+func revertOnError(d *schema.ResourceData, diags *diag.Diagnostics, keys ...string) {
+	if !diags.HasError() {
+		return
+	}
+	for _, key := range keys {
+		old, _ := d.GetChange(key)
+		if err := d.Set(key, old); err != nil {
+			*diags = append(*diags, diag.FromErr(fmt.Errorf("failed to restore %s: %w", key, err))...)
+		}
+	}
 }
 
 func stringSet(raw []interface{}) map[string]bool {

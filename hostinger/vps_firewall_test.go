@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
 func newTestClient(server *httptest.Server) *HostingerClient {
@@ -395,4 +396,55 @@ func TestFirewallActivationRead_DriftDetection(t *testing.T) {
 			t.Errorf("expected ID to be cleared when another firewall is active, got %q", d.Id())
 		}
 	})
+}
+
+func TestFirewallActivationUpdate_Triggers(t *testing.T) {
+	for name, tc := range map[string]struct {
+		syncStatus int
+		wantErr    bool
+		wantRules  string
+	}{
+		"sync succeeds stores new triggers":           {http.StatusOK, false, "v2"},
+		"sync fails keeps prior triggers for a retry": {http.StatusInternalServerError, true, "v1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api/vps/v1/firewall/65224/sync":
+					w.WriteHeader(tc.syncStatus)
+					_, _ = w.Write([]byte(`{"message":"ok"}`))
+				case "/api/vps/v1/virtual-machines/1268054":
+					_, _ = w.Write([]byte(`{"id":1268054,"firewall_group_id":65224}`))
+				case "/api/vps/v1/firewall/65224":
+					_, _ = w.Write([]byte(`{"id":65224,"name":"web-fw","is_synced":true,"rules":[]}`))
+				default:
+					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+				}
+			}))
+			defer server.Close()
+			client := newTestClient(server)
+
+			state := &terraform.InstanceState{ID: "65224/1268054", Attributes: map[string]string{
+				"id": "65224/1268054", "firewall_id": "65224", "virtual_machine_id": "1268054",
+				"triggers.%": "1", "triggers.rules": "v1",
+			}}
+			cfg := terraform.NewResourceConfigRaw(map[string]interface{}{
+				"firewall_id": 65224, "virtual_machine_id": 1268054,
+				"triggers": map[string]interface{}{"rules": "v2"},
+			})
+			r := resourceHostingerVPSFirewallActivation()
+			diff, err := r.Diff(context.Background(), state, cfg, client)
+			if err != nil {
+				t.Fatalf("diff failed: %v", err)
+			}
+			newState, diags := r.Apply(context.Background(), state, diff, client)
+			if diags.HasError() != tc.wantErr {
+				t.Fatalf("expected error %v, got %v", tc.wantErr, diags)
+			}
+			if got := newState.Attributes["triggers.rules"]; got != tc.wantRules {
+				t.Errorf("expected triggers.rules %q, got %q", tc.wantRules, got)
+			}
+		})
+	}
 }
