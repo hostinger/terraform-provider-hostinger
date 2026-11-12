@@ -349,6 +349,20 @@ func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m i
 	client := m.(*HostingerClient)
 	vmID, _ := strconv.Atoi(d.Id())
 
+	// Registered before any API call, so a failed hostname or template update doesn't save the planned keys either.
+	var keptOnError map[string][]interface{}
+	defer func() {
+		revertOnError(d, &diags, "ssh_key_ids", "ssh_keys", "ssh_key_ids_resolved")
+		if !diags.HasError() {
+			return
+		}
+		for key, extra := range keptOnError {
+			if err := d.Set(key, appendMissing(d.Get(key).([]interface{}), extra)); err != nil {
+				diags = append(diags, diag.FromErr(fmt.Errorf("failed to restore %s: %w", key, err))...)
+			}
+		}
+	}()
+
 	if d.HasChange("hostname") {
 		newHostname := d.Get("hostname").(string)
 
@@ -381,7 +395,6 @@ func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m i
 	}
 
 	if d.HasChange("ssh_key_ids") || d.HasChange("ssh_keys") {
-		defer revertOnError(d, &diags, "ssh_key_ids", "ssh_keys", "ssh_key_ids_resolved")
 		vmID := d.Get("vps_id").(int)
 
 		oldIDRaw, newIDRaw := d.GetChange("ssh_key_ids")
@@ -432,6 +445,15 @@ func resourceHostingerVPSUpdate(ctx context.Context, d *schema.ResourceData, m i
 				return diag.FromErr(fmt.Errorf("failed to add SSH keys during update: %w", err))
 			}
 		}
+		// The VM now holds the new keys: if a later step fails, keep them in state next to the prior ones,
+		// so a config that drops them still revokes them.
+		resolvedRaw := make([]interface{}, len(resolved))
+		for i, key := range resolved {
+			resolvedRaw[i] = key
+		}
+		keptOnError = map[string][]interface{}{
+			"ssh_key_ids": newIDRaw.([]interface{}), "ssh_keys": newKeyRaw.([]interface{}), "ssh_key_ids_resolved": resolvedRaw,
+		}
 		if len(toRemove) > 0 {
 			if err := client.RemoveVMSSHKeys(vmID, toRemove); err != nil {
 				return diag.FromErr(fmt.Errorf("failed to remove SSH keys during update: %w", err))
@@ -458,6 +480,20 @@ func revertOnError(d *schema.ResourceData, diags *diag.Diagnostics, keys ...stri
 			*diags = append(*diags, diag.FromErr(fmt.Errorf("failed to restore %s: %w", key, err))...)
 		}
 	}
+}
+
+// appendMissing appends the values of extra that list doesn't already hold.
+func appendMissing(list, extra []interface{}) []interface{} {
+	for _, v := range extra {
+		found := false
+		for _, have := range list {
+			found = found || have == v
+		}
+		if !found {
+			list = append(list, v)
+		}
+	}
+	return list
 }
 
 func stringSet(raw []interface{}) map[string]bool {
