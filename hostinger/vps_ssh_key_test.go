@@ -147,6 +147,8 @@ func (f *fakeKeyAPI) serve(t *testing.T) *httptest.Server {
 			_, _ = w.Write([]byte(`{"virtual_machine": {"id": 123}}`))
 		case "/api/vps/v1/virtual-machines/123":
 			_, _ = w.Write([]byte(`{"id": 123, "hostname": "vps.example.com", "state": "running"}`))
+		case "/api/vps/v1/virtual-machines/123/hostname":
+			w.WriteHeader(http.StatusInternalServerError)
 		case "/api/vps/v1/virtual-machines/123/ssh-keys":
 			if r.Method == http.MethodGet {
 				var keys []VMSSHKey
@@ -245,6 +247,59 @@ func TestVPSUpdate_FailedRevocationKeepsPriorStateForRetry(t *testing.T) {
 	newState, diags := applySSHKeyIDs(t, api, state, 8)
 	if !diags.HasError() {
 		t.Fatal("expected the failed removal to surface as an error")
+	}
+	// Key 7 stays so the next plan retries its revocation; key 8 stays because it is already on the VM.
+	want := map[string]string{
+		"ssh_key_ids.#": "2", "ssh_key_ids.0": "7", "ssh_key_ids.1": "8",
+		"ssh_key_ids_resolved.#": "2", "ssh_key_ids_resolved.0": "ssh-ed25519 OLD", "ssh_key_ids_resolved.1": "ssh-ed25519 NEW",
+	}
+	for k, v := range want {
+		if got := newState.Attributes[k]; got != v {
+			t.Errorf("expected %s to be %q, got %q", k, v, got)
+		}
+	}
+}
+
+func TestVPSUpdate_KeyAddedBeforeFailureIsRevokedWhenDroppedFromConfig(t *testing.T) {
+	api := &fakeKeyAPI{
+		account:    map[int]string{7: "ssh-ed25519 OLD", 8: "ssh-ed25519 NEW"},
+		onVM:       []string{"ssh-ed25519 OLD"},
+		failRemove: true,
+	}
+	state := vpsState(map[string]string{
+		"ssh_key_ids.#": "1", "ssh_key_ids.0": "7",
+		"ssh_key_ids_resolved.#": "1", "ssh_key_ids_resolved.0": "ssh-ed25519 OLD",
+	})
+	failedState, diags := applySSHKeyIDs(t, api, state, 8)
+	if !diags.HasError() {
+		t.Fatal("expected the failed removal to surface as an error")
+	}
+
+	// The operator rolls the config back to key 7: key 8, added by the failed apply, must be revoked.
+	api.onVM = append(api.onVM, api.added...)
+	api.failRemove = false
+	if _, diags := applySSHKeyIDs(t, api, failedState, 7); diags.HasError() {
+		t.Fatalf("apply failed: %v", diags)
+	}
+	if !reflect.DeepEqual(api.removed, []string{"ssh-ed25519 NEW"}) {
+		t.Errorf("expected key 8 to be revoked, removed %v", api.removed)
+	}
+}
+
+func TestVPSUpdate_FailedHostnameUpdateKeepsPriorSSHKeys(t *testing.T) {
+	api := &fakeKeyAPI{account: map[int]string{8: "ssh-ed25519 NEW"}, onVM: []string{"ssh-ed25519 OLD"}}
+	state := vpsState(map[string]string{
+		"hostname":      "old.example.com",
+		"ssh_key_ids.#": "1", "ssh_key_ids.0": "7",
+		"ssh_key_ids_resolved.#": "1", "ssh_key_ids_resolved.0": "ssh-ed25519 OLD",
+	})
+
+	newState, diags := applySSHKeyIDs(t, api, state, 8)
+	if !diags.HasError() || !strings.Contains(diags[0].Summary, "failed to update hostname") {
+		t.Fatalf("expected hostname error, got %v", diags)
+	}
+	if len(api.added) != 0 || len(api.removed) != 0 {
+		t.Errorf("expected no VM key changes, got added %v removed %v", api.added, api.removed)
 	}
 	want := map[string]string{
 		"ssh_key_ids.#": "1", "ssh_key_ids.0": "7",
