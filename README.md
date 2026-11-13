@@ -102,7 +102,7 @@ output "available_templates" {
 
 ## Importing Existing Resources
 
-You can import existing VPS instances into your Terraform state. The import process automatically retrieves all configuration details including plan, data center, and template information:
+You can import existing VPS instances into your Terraform state. The import process automatically retrieves the data center, template and hostname:
 
 ```bash
 # Import a VPS using its ID
@@ -114,10 +114,9 @@ After importing, check the imported values:
 terraform state show hostinger_vps.my_vps
 ```
 
-Then add the resource to your configuration with the imported values:
+Then add the resource to your configuration with the imported values. `plan` is only needed to purchase a new VPS and is ignored for an imported one.
 ```hcl
 resource "hostinger_vps" "my_vps" {
-  plan           = "KVM 8"              # Auto-retrieved during import
   data_center_id = 22                   # Auto-retrieved during import
   template_id    = 1141                 # Auto-retrieved during import
   hostname       = "srv1092628.hstgr.cloud"

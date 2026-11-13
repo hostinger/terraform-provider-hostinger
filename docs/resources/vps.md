@@ -24,7 +24,7 @@ resource "hostinger_vps" "box" {
 
 ## Argument Reference
 
-- `plan` – (Required) VPS plan identifier. Example: `hostingercom-vps-kvm2-usd-1m`.
+- `plan` – (Optional) VPS plan identifier. Example: `hostingercom-vps-kvm2-usd-1m`. Required to purchase a new VPS, and changing it replaces a VPS that Terraform purchased. Ignored for an imported VPS.
 - `data_center_id` – (Required) ID of the desired data center.
 - `template_id` – (Required) OS template ID. Example: `1002` for Debian 11.
 - `password` – (Optional, Sensitive) Root password. If not set, one will be auto-generated.
@@ -49,22 +49,21 @@ resource "hostinger_vps" "box" {
 
 ## Import
 
-Existing VPS instances can be imported using their VPS ID. The import process will automatically retrieve all necessary configuration details from the Hostinger API, including plan, data center, and template information.
+Existing VPS instances can be imported using their VPS ID:
 
 ```bash
 terraform import hostinger_vps.example 123456
 ```
 
-After importing, run `terraform state show hostinger_vps.example` to see all the imported values, then add them to your configuration file:
+After importing, run `terraform state show hostinger_vps.example` to see the imported values, then add `data_center_id`, `template_id` and `hostname` to your configuration:
 
 ```hcl
 resource "hostinger_vps" "example" {
-  plan           = "KVM 8"              # Automatically retrieved
-  data_center_id = 22                   # Automatically retrieved
-  template_id    = 1141                 # Automatically retrieved
-  hostname       = "srv123456.hstgr.cloud" # Automatically retrieved
+  data_center_id = 22
+  template_id    = 1141
+  hostname       = "srv123456.hstgr.cloud"
 }
 ```
 
-All fields including `plan`, `data_center_id`, `template_id`, `hostname`, `ipv4_address`, and `ipv6_address` are automatically populated from the imported resource, providing a seamless import experience similar to major cloud providers.
+`plan` is not needed for an imported VPS and is ignored if set: the API does not expose the plan identifier the VPS was purchased with, so there is nothing to compare it against.
 

@@ -84,56 +84,6 @@ func (c *HostingerClient) GetSubscriptionIDByVMID(vmID int) (string, error) {
 	return vm.SubscriptionID, nil
 }
 
-// GetSubscriptionDetails fetches subscription details including the plan information
-func (c *HostingerClient) GetSubscriptionDetails(subscriptionID string) (*SubscriptionDetails, error) {
-	url := fmt.Sprintf("%s/api/billing/v1/subscriptions/%s", c.BaseURL, subscriptionID)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	c.addStandardHeaders(req)
-	
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, ErrNotFound
-	}
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get subscription details (HTTP %d): %s", resp.StatusCode, string(body))
-	}
-	
-	var details SubscriptionDetails
-	if err := json.NewDecoder(resp.Body).Decode(&details); err != nil {
-		return nil, fmt.Errorf("invalid subscription details response: %w", err)
-	}
-	return &details, nil
-}
-
-// SubscriptionDetails contains detailed subscription information including the plan
-type SubscriptionDetails struct {
-	ID       string `json:"id"`
-	Status   string `json:"status"`
-	Plan     string `json:"plan"`
-	ItemID   string `json:"item_id"`
-	Product  struct {
-		Type       string `json:"type"`
-		ResourceID int    `json:"resource_id"`
-	} `json:"product"`
-}
-
-type Subscription struct {
-	ID      string `json:"id"`
-	Product struct {
-		Type       string `json:"type"`
-		ResourceID int    `json:"resource_id"`
-	} `json:"product"`
-}
-
 func (c *HostingerClient) CancelSubscription(subscriptionID string) error {
 	url := fmt.Sprintf("%s/api/billing/v1/subscriptions/%s", c.BaseURL, subscriptionID)
 
@@ -368,7 +318,7 @@ func (c *HostingerClient) GetVirtualMachine(vmID int) (*VirtualMachine, error) {
 	return &vm, nil
 }
 
-// GetVirtualMachineWithFullDetails retrieves complete VPS details including plan information
+// GetVirtualMachineWithFullDetails retrieves VPS details with the template and data center IDs filled in
 func (c *HostingerClient) GetVirtualMachineWithFullDetails(vmID int) (*VirtualMachine, error) {
 	// First get the basic VM info
 	vm, err := c.GetVirtualMachine(vmID)
@@ -395,20 +345,6 @@ func (c *HostingerClient) GetVirtualMachineWithFullDetails(vmID int) (*VirtualMa
 				}
 			}
 		}
-	}
-	
-	// Try to get subscription details to enrich with plan information
-	if vm.SubscriptionID != "" {
-		subDetails, err := c.GetSubscriptionDetails(vm.SubscriptionID)
-		if err == nil && subDetails != nil {
-			// Enrich VM with plan information from subscription
-			if subDetails.ItemID != "" {
-				vm.Plan = subDetails.ItemID
-			} else if subDetails.Plan != "" {
-				vm.Plan = subDetails.Plan
-			}
-		}
-		// We don't fail if subscription details can't be fetched, we just use what we have
 	}
 	
 	return vm, nil
