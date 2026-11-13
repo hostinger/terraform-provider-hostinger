@@ -2,6 +2,7 @@ package hostinger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -14,6 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
+var errPlanRequired = errors.New("plan is required to purchase a new VPS")
+
 func resourceHostingerVPS() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: resourceHostingerVPSCreate,
@@ -23,15 +26,28 @@ func resourceHostingerVPS() *schema.Resource {
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceHostingerVPSImport,
 		},
-		CustomizeDiff: customdiff.ComputedIf("ssh_key_ids_resolved", func(ctx context.Context, d *schema.ResourceDiff, m interface{}) bool {
-			return d.HasChange("ssh_key_ids")
-		}),
+		CustomizeDiff: customdiff.All(
+			customdiff.ComputedIf("ssh_key_ids_resolved", func(ctx context.Context, d *schema.ResourceDiff, m interface{}) bool {
+				return d.HasChange("ssh_key_ids")
+			}),
+			func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
+				if config := d.GetRawConfig(); d.Id() == "" && !config.IsNull() && config.GetAttr("plan").IsNull() {
+					return errPlanRequired
+				}
+				return nil
+			},
+		),
 		Schema: map[string]*schema.Schema{
 			"plan": {
 				Type:         schema.TypeString,
-				Required:     true,
+				Optional:     true,
+				Computed:     true,
 				ForceNew:     true,
-				Description:  "VPS plan identifier (e.g., `hostingercom-vps-kvm2-usd-1m`).",
+				Description:  "VPS plan identifier (e.g., `hostingercom-vps-kvm2-usd-1m`). Required to purchase a new VPS; ignored for an imported one.",
+				// The API does not expose the plan identifier a VPS was purchased with, so an imported VPS has none to compare against.
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					return d.Id() != "" && old == ""
+				},
 				ValidateFunc: validation.StringIsNotEmpty,
 			},
 			"data_center_id": {
@@ -136,6 +152,9 @@ func resourceHostingerVPSCreate(ctx context.Context, d *schema.ResourceData, m i
 
 	// Gather required fields for the VPS purchase
 	plan := d.Get("plan").(string)
+	if plan == "" {
+		return diag.FromErr(errPlanRequired)
+	}
 	dataCenterID := d.Get("data_center_id").(int)
 	templateID := d.Get("template_id").(int)
 
@@ -319,6 +338,12 @@ func resourceHostingerVPSRead(ctx context.Context, d *schema.ResourceData, m int
 			}
 		}
 		if err := d.Set("ssh_key_ids_resolved", resolved); err != nil {
+			return diag.FromErr(fmt.Errorf("failed to set ssh_key_ids_resolved: %w", err))
+		}
+	}
+	// An attribute missing from state (e.g. after import) is planned as "known after apply" on every run.
+	if len(d.Get("ssh_key_ids_resolved").([]interface{})) == 0 {
+		if err := d.Set("ssh_key_ids_resolved", []string{}); err != nil {
 			return diag.FromErr(fmt.Errorf("failed to set ssh_key_ids_resolved: %w", err))
 		}
 	}
@@ -544,7 +569,6 @@ func resourceHostingerVPSImport(ctx context.Context, d *schema.ResourceData, m i
 		return nil, fmt.Errorf("invalid VPS ID format: %s", d.Id())
 	}
 	
-	// Use the enhanced function to get full details including plan
 	vm, err := client.GetVirtualMachineWithFullDetails(vmID)
 	if err != nil {
 		if err == ErrNotFound {
@@ -563,13 +587,6 @@ func resourceHostingerVPSImport(ctx context.Context, d *schema.ResourceData, m i
 	}
 	if err := d.Set("status", vm.State); err != nil {
 		return nil, fmt.Errorf("failed to set status: %w", err)
-	}
-	
-	// Set the plan if we successfully retrieved it
-	if vm.Plan != "" {
-		if err := d.Set("plan", vm.Plan); err != nil {
-			return nil, fmt.Errorf("failed to set plan: %w", err)
-		}
 	}
 	
 	// Set data center and template IDs if available
